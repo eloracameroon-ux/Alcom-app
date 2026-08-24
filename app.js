@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-15h40";
+export const BUILD_ID = "2026-08-24-16h20";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -99,6 +99,14 @@ const ROLES = {
 
 const PROJECT_STATUTS = ["Préparation","Études","Autorisations","Conception","Achats","Construction","Installation","Tests","Réception","Mise en service"];
 
+// Informations légales de l'entreprise pour le papier en-tête des rapports
+const COMPANY = {
+  nom: "ALCOM PETROLEUM",
+  bp: "B.P: 2470",
+  rc: "RC: CM/DLA/012024/B15/00002",
+  nui: "NUI: M062416842044H"
+};
+
 const CHECKLIST_TEMPLATE = [
   {cat:"Terrain & implantation", items:["Titre foncier / bail","Plan cadastral","Plan de situation","Coordonnées GPS","Étude géotechnique","Étude topographique"]},
   {cat:"Études environnementales", items:["Étude d'impact environnemental","Autorisations environnementales","Plan de gestion environnementale","Documents relatifs aux déchets"]},
@@ -107,6 +115,34 @@ const CHECKLIST_TEMPLATE = [
   {cat:"Construction", items:["Installation chantier","Terrassement","Fondations / dalle","Tuyauterie & tests d'étanchéité","Électricité & mise à la terre","Auvent / enseigne / totem"]},
   {cat:"Mise en service", items:["Tests & contrôles","Réception travaux","Autorisation d'exploitation","Ouverture"]}
 ];
+
+// -------------------------------------------------------------
+// CHECKLISTS DÉTAILLÉES PAR PHASE — une interface dédiée par étape
+// du projet (Préparation, Études, Autorisations, Conception, Achats,
+// Construction, Installation, Tests, Réception, Mise en service).
+// Contenu basé sur les exigences réelles de construction d'une
+// station-service (études, autorisations réglementaires, gros œuvre,
+// équipements pétroliers) et sur le suivi de chantier fourni.
+// -------------------------------------------------------------
+const PHASE_CHECKLISTS = {
+  "Préparation": ["Identification du terrain","Titre foncier ou bail","Plan cadastral","Plan de situation","Coordonnées GPS","Étude de faisabilité","Accord de principe autorité locale / mairie"],
+  "Études": ["Étude géotechnique","Étude topographique","Étude hydrologique (si nécessaire)","Étude d'impact environnemental","Étude courant fort","Étude courant faible","Étude photovoltaïque","Étude plomberie","Étude climatisation / ventilation","Étude architecturale","Étude de sécurité incendie"],
+  "Autorisations": ["Permis de bâtir","Licence d'exploitation station-service","Autorisation environnementale","Certificat de conformité ICPE (installation classée)","Autorisation du ministère du Commerce","Autorisation transport / stockage d'hydrocarbures","Avis des sapeurs-pompiers","Autorisation de voirie / accès"],
+  "Conception": ["Plans architecturaux définitifs","Plans de masse","Plans électriques","Plans plomberie","Plans réseaux, cuves et tuyauteries","Validation Direction","Cahier des charges technique finalisé"],
+  "Achats": ["Consultation fournisseurs","Devis reçus","Comparatif des devis","Validation budgétaire","BC cuves hydrocarbures","BC pompes / distributeurs","BC groupe électrogène","BC matériel électrique","BC auvent, enseigne, totem","BC mobilier et équipements boutique"],
+  "Construction": ["Installation chantier","Terrassement","Fouille / excavation","Fondations / dalle","Libération des plateaux des cuves","Enlèvement des cuves","Re-épreuve hydraulique des cuves","Vérification des viroles des cuves","Remblai","Structure & maçonnerie","Tuyauterie hydrocarbures","Tests d'étanchéité","Électricité & mise à la terre","Génie civil","Chambres étanches (cuves / pompes)","Auvent, totem, enseigne","Peinture","Carrelage","Menuiserie bois / aluminium"],
+  "Installation": ["Installation des cuves","Installation des pompes / distributeurs","Installations pétrolières (servicing, distribution, automation, barémage)","Sécurité incendie","Caméras de surveillance","Borne de recharge électrique","Pont élévateur","Aménagement intérieur boutique (gondoles)","Branding complet + canopy îlots"],
+  "Tests": ["Tests d'étanchéité finaux","Tests électriques","Tests des pompes / débit","Tests de sécurité incendie","Contrôle qualité carburant","Essais de mise en pression"],
+  "Réception": ["Réception des travaux (PV)","Levée des réserves","Réception des équipements fournisseurs","Contrôle de conformité réglementaire","Inspection finale des autorités"],
+  "Mise en service": ["Recrutement du personnel","EPI du personnel","Formation sécurité incendie","Formation manipulation produits pétroliers","Formation communication","Approvisionnement produits pétroliers & lubrifiants","Approvisionnement produits alimentaires / boutique","Autorisation d'exploitation définitive","Ouverture officielle"]
+};
+function freshPhaseChecklists(){
+  const out = {};
+  PROJECT_STATUTS.forEach(phase=>{
+    out[phase] = (PHASE_CHECKLISTS[phase]||[]).map(label=>({label, responsable:"", statut:"Non commencé", avancement:0, dateDebut:"", dateFin:""}));
+  });
+  return out;
+}
 
 // -------------------------------------------------------------
 // UTILITAIRES
@@ -201,6 +237,7 @@ function goTo(route, opts={}){
   STATE.route = route;
   STATE.projectId = opts.projectId ?? null;
   STATE.projectTab = opts.projectTab ?? "fiche";
+  if(opts.phase) STATE.activePhase = opts.phase;
   renderNav();
   render();
 }
@@ -478,6 +515,7 @@ window.submitNewProject = async function(){
     budgetRevise:Number($("#npBudget").value||0), montantEngage:0, montantPaye:0,
     adresse:$("#npAdresse").value.trim(),
     checklist: CHECKLIST_TEMPLATE.map(c=>({cat:c.cat, items:c.items.map(l=>({label:l, statut:"Non commencé"}))})),
+    phaseChecklists: freshPhaseChecklists(),
     createdAt: serverTimestamp(), createdBy: STATE.user.uid
   };
   try{
@@ -527,7 +565,7 @@ function renderProjectDetail(){
       <span class="mono" style="font-size:12px;color:var(--muted)">${pr.code||''}</span>
     </div>
     <div class="stepper">
-      ${PROJECT_STATUTS.map((s,i)=>`<div class="step ${i<idx?'done':i===idx?'current':''}" onclick="jumpToPhase('${pr.id}','${s}')" style="cursor:pointer;">${s}</div>`).join("")}
+      ${PROJECT_STATUTS.map((s,i)=>`<div class="step ${i<idx?'done':i===idx?'current':''}" onclick="goTo('projects',{projectId:'${pr.id}',projectTab:'checklist',phase:'${s}'})" style="cursor:pointer;">${s}</div>`).join("")}
     </div>
     <div style="display:flex;gap:6px;margin:16px 0;border-bottom:1px solid var(--line);overflow-x:auto;">
       ${PROJECT_TABS.map(t=>`<div onclick="goTo('projects',{projectId:'${pr.id}',projectTab:'${t.id}'})"
@@ -633,9 +671,55 @@ window.submitStatut = async function(id){
 };
 
 function renderProjectChecklist(pr){
+  const phase = STATE.activePhase || pr.statut || PROJECT_STATUTS[0];
+  const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
+  const items = phaseChecklists[phase] || [];
+  const total = items.length;
+  const done = items.filter(i=>i.statut==="Terminé").length;
+  const pct = total ? Math.round(done/total*100) : 0;
+
+  const phasePicker = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;">
+    ${PROJECT_STATUTS.map(s=>`<div onclick="goTo('projects',{projectId:'${pr.id}',projectTab:'checklist',phase:'${s}'})"
+      class="pill ${s===phase?'bad':'neutral'}" style="cursor:pointer;white-space:nowrap;flex-shrink:0;">${s}</div>`).join("")}
+  </div>`;
+
+  const header = `<div class="card">
+    <div class="section-title">
+      <h3 style="margin:0;">Checklist — ${phase}</h3>
+      <button class="btn sm ${pr.statut===phase?'ghost':'primary'}" ${pr.statut===phase?'disabled':''} onclick="jumpToPhase('${pr.id}','${phase}')">
+        ${pr.statut===phase?'Phase actuelle du projet':'Définir comme phase actuelle'}
+      </button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="progress-track" style="flex:1;height:9px;"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <strong style="font-size:13px;">${done}/${total}</strong>
+    </div>
+  </div>`;
+
+  const list = items.length===0 ? emptyState("projects","Aucun point pour cette phase","") : `<div class="card">
+    ${items.map((it,ii)=>`
+      <div style="padding:11px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <strong style="font-size:13.5px;">${it.label}</strong>
+          <select onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'statut',this.value)" style="font-size:11.5px;padding:5px 7px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);flex-shrink:0;">
+            ${["Non commencé","En cours","Terminé","Bloqué","Non applicable","En retard"].map(s=>`<option ${s===it.statut?'selected':''}>${s}</option>`).join("")}
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:7px;flex-wrap:wrap;">
+          <input placeholder="Responsable" value="${esc(it.responsable)}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'responsable',this.value)" style="flex:1;min-width:120px;font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          <input type="date" value="${it.dateDebut||''}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'dateDebut',this.value)" style="font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          <input type="date" value="${it.dateFin||''}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'dateFin',this.value)" style="font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+          <input type="range" min="0" max="100" value="${it.avancement||0}" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'avancement',Number(this.value))" style="flex:1;">
+          <span style="font-size:11px;width:32px;color:var(--muted);">${it.avancement||0}%</span>
+        </div>
+      </div>`).join("")}
+  </div>`;
+
   const cl = pr.checklist || [];
-  if(cl.length===0) return emptyState("projects","Checklist vide","");
-  return cl.map((cat,ci)=>`
+  const legacy = cl.length===0 ? "" : `<div class="section-title" style="margin-top:22px;"><h2>Checklist documentaire générale</h2></div>` +
+    cl.map((cat,ci)=>`
     <div class="card">
       <h3>${cat.cat}</h3>
       ${cat.items.map((it,ii)=>`
@@ -646,7 +730,18 @@ function renderProjectChecklist(pr){
           </select>
         </div>`).join("")}
     </div>`).join("");
+
+  return phasePicker + header + list + legacy;
 }
+window.updatePhaseItem = async function(projectId, phase, ii, field, val){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists || freshPhaseChecklists()));
+  if(!phaseChecklists[phase]) phaseChecklists[phase] = [];
+  phaseChecklists[phase][ii][field] = val;
+  if(field==="avancement" && Number(val)>=100) phaseChecklists[phase][ii].statut = "Terminé";
+  if(field==="statut" && val==="Terminé") phaseChecklists[phase][ii].avancement = 100;
+  await updateDoc(doc(db,"projects",projectId), {phaseChecklists});
+};
 window.updateChecklistItem = async function(projectId, ci, ii, val){
   const pr = STATE.projects.find(p=>p.id===projectId);
   const cl = JSON.parse(JSON.stringify(pr.checklist));
@@ -832,16 +927,74 @@ window.updateTravauxAvancement = async function(projectId, i, val){
 };
 
 // -------------------------------------------------------------
-// ACHATS / BONS DE COMMANDE
+// ACHATS — cycle complet : Besoins → Devis/Pro forma → BC → Factures → Garanties
 // -------------------------------------------------------------
 const BC_STATUTS = ["Brouillon","En validation","Validé","Envoyé au fournisseur","Signé","Partiellement exécuté","Exécuté","Annulé"];
+const ACHATS_SUBTABS = [
+  {id:"besoins", label:"Besoins"},
+  {id:"bc", label:"Bons de commande"},
+  {id:"proforma", label:"Pro forma"},
+  {id:"factures", label:"Factures"},
+  {id:"garanties", label:"Garanties"}
+];
 function renderProjectAchats(pr){
+  const sub = STATE.achatsSubtab || "bc";
+  const subnav = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;">
+    ${ACHATS_SUBTABS.map(t=>`<div onclick="setAchatsSubtab('${t.id}')" class="pill ${sub===t.id?'bad':'neutral'}" style="cursor:pointer;white-space:nowrap;flex-shrink:0;">${t.label}</div>`).join("")}
+  </div>`;
+  let body = "";
+  if(sub==="besoins") body = renderBesoins(pr);
+  else if(sub==="bc") body = renderBCSection(pr);
+  else if(sub==="proforma") body = renderProforma(pr);
+  else if(sub==="factures") body = renderFactures(pr);
+  else if(sub==="garanties") body = renderGaranties(pr);
+  return subnav + body;
+}
+window.setAchatsSubtab = function(id){ STATE.achatsSubtab = id; render(); };
+
+// -- Demandes de besoin --
+function renderBesoins(pr){
+  const list = pr.besoins || [];
+  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openBesoinModal('${pr.id}')">${icon('plus')} Nouvelle demande</button></div>
+  ${list.length===0 ? emptyState("projects","Aucune demande de besoin","Enregistrez ici ce qui doit être acheté avant de consulter les fournisseurs.") :
+  `<div class="card">${list.map((b,i)=>`
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">
+      <div><strong style="font-size:13.5px;">${b.article}</strong><br><span style="font-size:11.5px;color:var(--muted)">Qté ${b.quantite} · Demandé par ${b.demandeur||'—'} le ${b.date}</span></div>
+      <select onchange="updateBesoinStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);height:fit-content;">
+        ${["Identifié","Fournisseur contacté","Devis reçu","Validé","Clôturé"].map(s=>`<option ${s===b.statut?'selected':''}>${s}</option>`).join("")}
+      </select>
+    </div>`).join("")}</div>`}`;
+}
+window.openBesoinModal = function(projectId){
+  openModal(`<div class="modal-head"><h3>Nouvelle demande de besoin</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field" style="margin-bottom:12px;"><label>Article / besoin</label><input id="bsArticle" placeholder="Cuves 20m³"></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Quantité</label><input type="number" id="bsQte" value="1"></div>
+      <div class="f-field"><label>Demandeur</label><input id="bsDemandeur"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitBesoin('${projectId}')">Enregistrer</button></div>`);
+};
+window.submitBesoin = async function(projectId){
+  const article = $("#bsArticle").value.trim();
+  if(!article){ toast("L'article est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const besoins = [...(pr.besoins||[]), {article, quantite:Number($("#bsQte").value||1), demandeur:$("#bsDemandeur").value.trim(), date:todayISO(), statut:"Identifié"}];
+  await updateDoc(doc(db,"projects",projectId), {besoins});
+  closeModal(); toast("Demande enregistrée ✓");
+};
+window.updateBesoinStatut = async function(projectId, i, val){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const besoins = JSON.parse(JSON.stringify(pr.besoins));
+  besoins[i].statut = val;
+  await updateDoc(doc(db,"projects",projectId), {besoins});
+};
+
+// -- Bons de commande --
+function renderBCSection(pr){
   const bcs = pr.bonsCommande || [];
-  return `
-    <div class="section-title"><div></div><button class="btn primary sm" onclick="openBCModal('${pr.id}')">${icon('plus')} Nouveau bon de commande</button></div>
+  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openBCModal('${pr.id}')">${icon('plus')} Nouveau bon de commande</button></div>
     ${bcs.length===0 ? emptyState("projects","Aucun bon de commande","Créez le premier bon de commande de ce projet.") :
-    `<div class="card">${renderBCTable(bcs, pr.id)}</div>`}
-  `;
+    `<div class="card">${renderBCTable(bcs, pr.id)}</div>`}`;
 }
 function renderBCTable(bcs, projectId){
   return `<table><thead><tr><th>N°</th><th>Fournisseur</th><th>Montant TTC</th><th>Statut</th></tr></thead><tbody>
@@ -896,6 +1049,117 @@ window.updateBCStatut = async function(projectId, i, val){
   const bonsCommande = JSON.parse(JSON.stringify(pr.bonsCommande));
   bonsCommande[i].statut = val;
   await updateDoc(doc(db,"projects",projectId), {bonsCommande});
+};
+
+// -- Pro forma --
+function renderProforma(pr){
+  const list = pr.proforma || [];
+  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openProformaModal('${pr.id}')">${icon('plus')} Nouvelle pro forma</button></div>
+  ${list.length===0 ? emptyState("projects","Aucune pro forma","Enregistrez les factures pro forma reçues des fournisseurs.") :
+  `<div class="card"><table><thead><tr><th>N°</th><th>Fournisseur</th><th>Montant</th><th>Validité</th></tr></thead><tbody>
+    ${list.map(p=>`<tr><td class="mono">${p.numero||'—'}</td><td>${p.fournisseur}</td><td>${fmt(p.montant)} ${p.devise||'FCFA'}</td><td>${p.validite||'—'}</td></tr>`).join("")}
+  </tbody></table></div>`}`;
+}
+window.openProformaModal = function(projectId){
+  const fournisseurOptions = STATE.suppliers.map(s=>`<option>${esc(s.nom)}</option>`).join("");
+  openModal(`<div class="modal-head"><h3>Nouvelle pro forma</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Numéro</label><input id="pfNum"></div>
+      <div class="f-field"><label>Fournisseur</label><input id="pfFourn" list="pfFournList"><datalist id="pfFournList">${fournisseurOptions}</datalist></div>
+      <div class="f-field"><label>Montant</label><input type="number" id="pfMontant" value="0"></div>
+      <div class="f-field"><label>Devise</label><input id="pfDevise" value="FCFA"></div>
+      <div class="f-field full"><label>Date de validité</label><input type="date" id="pfValidite"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitProforma('${projectId}')">Enregistrer</button></div>`);
+};
+window.submitProforma = async function(projectId){
+  const fournisseur = $("#pfFourn").value.trim();
+  if(!fournisseur){ toast("Le fournisseur est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const proforma = [...(pr.proforma||[]), {numero:$("#pfNum").value.trim(), fournisseur, montant:Number($("#pfMontant").value||0), devise:$("#pfDevise").value.trim()||"FCFA", validite:$("#pfValidite").value}];
+  await updateDoc(doc(db,"projects",projectId), {proforma});
+  closeModal(); toast("Pro forma enregistrée ✓");
+};
+
+// -- Factures --
+function renderFactures(pr){
+  const list = pr.factures || [];
+  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openFactureModal('${pr.id}')">${icon('plus')} Nouvelle facture</button></div>
+  ${list.length===0 ? emptyState("projects","Aucune facture","Enregistrez les factures reçues des fournisseurs.") :
+  `<div class="card">${list.map((f,i)=>`
+    <div style="padding:9px 0;border-bottom:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+        <strong style="font-size:13.5px;">${f.numero||'Facture'} — ${f.fournisseur}</strong>
+        <select onchange="updateFactureStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          ${["À payer","Payée partiellement","Payée"].map(s=>`<option ${s===f.statut?'selected':''}>${s}</option>`).join("")}
+        </select>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${fmt(f.montant)} ${f.devise||'FCFA'} · échéance ${f.echeance||'—'}</div>
+    </div>`).join("")}</div>`}`;
+}
+window.openFactureModal = function(projectId){
+  const fournisseurOptions = STATE.suppliers.map(s=>`<option>${esc(s.nom)}</option>`).join("");
+  openModal(`<div class="modal-head"><h3>Nouvelle facture</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Numéro</label><input id="fcNum"></div>
+      <div class="f-field"><label>Fournisseur</label><input id="fcFourn" list="fcFournList"><datalist id="fcFournList">${fournisseurOptions}</datalist></div>
+      <div class="f-field"><label>Montant</label><input type="number" id="fcMontant" value="0"></div>
+      <div class="f-field"><label>Devise</label><input id="fcDevise" value="FCFA"></div>
+      <div class="f-field"><label>Échéance</label><input type="date" id="fcEcheance"></div>
+      <div class="f-field"><label>Statut</label><select id="fcStatut"><option>À payer</option><option>Payée partiellement</option><option>Payée</option></select></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitFacture('${projectId}')">Enregistrer</button></div>`);
+};
+window.submitFacture = async function(projectId){
+  const fournisseur = $("#fcFourn").value.trim();
+  if(!fournisseur){ toast("Le fournisseur est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const factures = [...(pr.factures||[]), {numero:$("#fcNum").value.trim(), fournisseur, montant:Number($("#fcMontant").value||0), devise:$("#fcDevise").value.trim()||"FCFA", echeance:$("#fcEcheance").value, statut:$("#fcStatut").value}];
+  await updateDoc(doc(db,"projects",projectId), {factures});
+  closeModal(); toast("Facture enregistrée ✓");
+};
+window.updateFactureStatut = async function(projectId, i, val){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const factures = JSON.parse(JSON.stringify(pr.factures));
+  factures[i].statut = val;
+  await updateDoc(doc(db,"projects",projectId), {factures});
+};
+
+// -- Garanties --
+function renderGaranties(pr){
+  const list = pr.garanties || [];
+  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openGarantieModal('${pr.id}')">${icon('plus')} Nouvelle garantie</button></div>
+  ${list.length===0 ? emptyState("projects","Aucune garantie enregistrée","Enregistrez les garanties fournisseurs sur les équipements.") :
+  `<div class="card">${list.map(g=>{
+    const expiree = g.dateFin && new Date(g.dateFin) < new Date();
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+        <strong style="font-size:13.5px;">${g.equipement}</strong>
+        <span class="pill ${expiree?'bad':'ok'}">${expiree?'Expirée':'Active'}</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${g.fournisseur||'—'} · du ${g.dateDebut||'?'} au ${g.dateFin||'?'}</div>
+      ${g.conditions?`<div style="font-size:12px;margin-top:4px;">${g.conditions}</div>`:""}
+    </div>`;
+  }).join("")}</div>`}`;
+}
+window.openGarantieModal = function(projectId){
+  openModal(`<div class="modal-head"><h3>Nouvelle garantie</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field" style="margin-bottom:12px;"><label>Équipement</label><input id="grEquip" placeholder="Cuves, pompes…"></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Fournisseur</label><input id="grFourn"></div>
+      <div class="f-field"><label>Début</label><input type="date" id="grDebut"></div>
+      <div class="f-field"><label>Fin</label><input type="date" id="grFin"></div>
+      <div class="f-field full"><label>Conditions</label><textarea id="grCond"></textarea></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitGarantie('${projectId}')">Enregistrer</button></div>`);
+};
+window.submitGarantie = async function(projectId){
+  const equipement = $("#grEquip").value.trim();
+  if(!equipement){ toast("L'équipement est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const garanties = [...(pr.garanties||[]), {equipement, fournisseur:$("#grFourn").value.trim(), dateDebut:$("#grDebut").value, dateFin:$("#grFin").value, conditions:$("#grCond").value.trim()}];
+  await updateDoc(doc(db,"projects",projectId), {garanties});
+  closeModal(); toast("Garantie enregistrée ✓");
 };
 
 // -------------------------------------------------------------
@@ -1092,23 +1356,134 @@ window.submitSupplier = async function(){
 };
 
 // -------------------------------------------------------------
-// RAPPORTS
+// RAPPORTS — papier en-tête, contenu détaillé, export et import
 // -------------------------------------------------------------
 function renderRapports(){
-  return `
-    <div class="grid-2">
-      ${STATE.projects.map(pr=>`
-        <div class="card">
-          <h3>${pr.nom}</h3>
-          ${infoRow("Statut", pr.statut)}
-          ${infoRow("Budget", fmtXAF(pr.budgetInitial))}
-          ${infoRow("Engagé / Payé", `${fmt(pr.montantEngage)} / ${fmt(pr.montantPaye)}`)}
-          <button class="btn sm" style="margin-top:10px;" onclick="window.print()">Imprimer / Exporter PDF</button>
+  if(STATE.projects.length===0) return emptyState("projects","Aucun rapport disponible","Créez un projet pour générer des rapports.");
+  return STATE.projects.map(pr=>{
+    const rapports = pr.rapportsDocs || [];
+    return `<div class="card">
+      <div class="section-title"><h3 style="margin:0;">${pr.nom}</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn gold sm" onclick="printProjectReport('${pr.id}')">📄 Générer le rapport</button>
         </div>
-      `).join("") || emptyState("projects","Aucun rapport disponible","Créez un projet pour générer des rapports.")}
-    </div>
-  `;
+      </div>
+      ${infoRow("Statut", pr.statut)}
+      ${infoRow("Budget", fmtXAF(pr.budgetInitial))}
+      ${infoRow("Engagé / Payé", `${fmt(pr.montantEngage)} / ${fmt(pr.montantPaye)}`)}
+      <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px;">
+        <div class="section-title"><h4 style="margin:0;font-size:12.5px;color:var(--muted);text-transform:uppercase;">Documents de rapport importés</h4>
+          <button class="btn sm ghost" onclick="openImportRapportModal('${pr.id}')">${icon('plus')} Importer</button>
+        </div>
+        ${rapports.length===0 ? `<p style="font-size:12px;color:var(--muted);">Aucun rapport importé.</p>` :
+          rapports.map(r=>`<div style="padding:6px 0;font-size:12.5px;"><a class="doc-link" href="${r.fileUrl}" download="${esc(r.fileName)}" target="_blank">📎 ${r.nom} — ${r.fileName}</a></div>`).join("")}
+      </div>
+    </div>`;
+  }).join("");
 }
+
+window.openImportRapportModal = function(projectId){
+  openModal(`<div class="modal-head"><h3>Importer un rapport</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field" style="margin-bottom:12px;"><label>Nom du rapport</label><input id="rpNom" placeholder="Rapport mensuel — août 2026"></div>
+    <div class="f-field"><label>Fichier — PDF, Word, Excel (max ~700 Ko)</label><input type="file" id="rpFile" accept=".pdf,.doc,.docx,.xls,.xlsx"></div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" id="rpSubmitBtn" onclick="submitImportRapport('${projectId}')">Importer</button></div>`);
+};
+window.submitImportRapport = async function(projectId){
+  const nom = $("#rpNom").value.trim();
+  const file = $("#rpFile").files[0];
+  if(!nom || !file){ toast("Nom et fichier requis", true); return; }
+  if(file.size > 720000){ toast("Fichier trop volumineux (max ~700 Ko)", true); return; }
+  const btn = $("#rpSubmitBtn"); btn.disabled = true; btn.textContent = "Import…";
+  try{
+    const fileUrl = await fileToBase64(file);
+    const pr = STATE.projects.find(p=>p.id===projectId);
+    const rapportsDocs = [...(pr.rapportsDocs||[]), {nom, fileName:file.name, fileUrl, date:todayISO()}];
+    await updateDoc(doc(db,"projects",projectId), {rapportsDocs});
+    closeModal(); toast("Rapport importé ✓");
+  }catch(e){ toast("Erreur : "+e.message, true); btn.disabled=false; btn.textContent="Importer"; }
+};
+
+// Génère un rapport complet avec papier en-tête et lance l'impression / export PDF
+window.printProjectReport = function(projectId){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  if(!pr) return;
+  const idx = PROJECT_STATUTS.indexOf(pr.statut);
+  const avance = Math.round(((idx+1)/PROJECT_STATUTS.length)*100);
+  const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
+
+  const phasesHtml = PROJECT_STATUTS.map(phase=>{
+    const items = phaseChecklists[phase] || [];
+    const done = items.filter(i=>i.statut==="Terminé").length;
+    const pct = items.length ? Math.round(done/items.length*100) : 0;
+    return `<div class="report-row"><span>${phase}${phase===pr.statut?' (phase actuelle)':''}</span><strong>${done}/${items.length} — ${pct}%</strong></div>`;
+  }).join("");
+
+  const bcs = pr.bonsCommande || [];
+  const bcHtml = bcs.length===0 ? `<p style="font-size:12px;color:#888;">Aucun bon de commande.</p>` :
+    bcs.map(b=>`<div class="report-row"><span>${b.numero||'—'} — ${b.fournisseur}</span><strong>${fmt(b.montantTTC)} ${b.devise||'FCFA'} · ${b.statut}</strong></div>`).join("");
+
+  const risques = pr.risques || [];
+  const risquesHtml = risques.length===0 ? `<p style="font-size:12px;color:#888;">Aucun risque signalé.</p>` :
+    risques.map(r=>`<div class="report-row"><span>${r.probleme} (${r.categorie||'—'})</span><strong>${r.criticite}</strong></div>`).join("");
+
+  const docs = pr.documents || [];
+  const docsHtml = docs.length===0 ? `<p style="font-size:12px;color:#888;">Aucun document.</p>` :
+    docs.map(d=>`<div class="report-row"><span>${d.nom} (${d.type})</span><strong>${d.statut}</strong></div>`).join("");
+
+  const now = new Date();
+  document.getElementById("printReportArea").innerHTML = `
+    <div class="letterhead">
+      <img src="assets/logo.jpeg" alt="logo">
+      <div class="lh-info">
+        <strong>${COMPANY.nom}</strong>
+        ${COMPANY.bp} · ${COMPANY.rc} · ${COMPANY.nui}
+      </div>
+    </div>
+    <h2 style="margin:0 0 4px;">Rapport de projet — ${pr.nom}</h2>
+    <p style="font-size:11.5px;color:#666;margin:0 0 20px;">Généré le ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR')} · Code projet : ${pr.code||'—'}</p>
+
+    <div class="report-section">
+      <h4>Informations générales</h4>
+      <div class="report-row"><span>Localisation</span><strong>${pr.ville||'—'}, ${pr.pays||'—'}</strong></div>
+      <div class="report-row"><span>Responsable</span><strong>${pr.responsable||'—'}</strong></div>
+      <div class="report-row"><span>Statut actuel</span><strong>${pr.statut} (${avance}% du parcours)</strong></div>
+      <div class="report-row"><span>Date de lancement</span><strong>${pr.dateDebut||'—'}</strong></div>
+      <div class="report-row"><span>Date de fin prévue</span><strong>${pr.dateFinPrevue||'—'}</strong></div>
+    </div>
+
+    <div class="report-section">
+      <h4>Avancement par phase</h4>
+      ${phasesHtml}
+    </div>
+
+    <div class="report-section">
+      <h4>Finance</h4>
+      <div class="report-row"><span>Budget initial</span><strong>${fmtXAF(pr.budgetInitial)}</strong></div>
+      <div class="report-row"><span>Montant engagé</span><strong>${fmtXAF(pr.montantEngage)}</strong></div>
+      <div class="report-row"><span>Montant payé</span><strong>${fmtXAF(pr.montantPaye)}</strong></div>
+      <div class="report-row"><span>Solde restant</span><strong>${fmtXAF((pr.montantEngage||0)-(pr.montantPaye||0))}</strong></div>
+    </div>
+
+    <div class="report-section">
+      <h4>Bons de commande</h4>
+      ${bcHtml}
+    </div>
+
+    <div class="report-section">
+      <h4>Documents</h4>
+      ${docsHtml}
+    </div>
+
+    <div class="report-section">
+      <h4>Risques & blocages</h4>
+      ${risquesHtml}
+    </div>
+
+    <div class="report-footer">${COMPANY.nom} — Document généré automatiquement par l'application de pilotage des projets.</div>
+  `;
+  document.getElementById("printReportArea").style.display = "block";
+  setTimeout(()=>{ window.print(); document.getElementById("printReportArea").style.display = "none"; }, 100);
+};
 
 // -------------------------------------------------------------
 // PARAMÈTRES (utilisateurs)

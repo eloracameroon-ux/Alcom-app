@@ -239,6 +239,24 @@ tr.rowlink:hover{background:var(--paper-3);}
   .bn-item.active{color:var(--red);}
   .bn-item svg{width:19px; height:19px;}
 }
+
+/* ---------- PAPIER EN-TÊTE / IMPRESSION DES RAPPORTS ---------- */
+.letterhead{display:flex; align-items:center; gap:16px; border-bottom:3px solid #E4241B; padding-bottom:14px; margin-bottom:20px;}
+.letterhead img{height:60px; width:auto; flex-shrink:0;}
+.letterhead .lh-info{font-size:11px; line-height:1.5; color:#333;}
+.letterhead .lh-info strong{font-size:15px; display:block; color:#111; margin-bottom:2px;}
+.report-section{margin-bottom:18px;}
+.report-section h4{font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:#B01813; border-bottom:1px solid #ddd; padding-bottom:6px; margin-bottom:10px;}
+.report-row{display:flex; justify-content:space-between; padding:5px 0; font-size:12.5px; border-bottom:1px solid #f0f0f0; color:#111;}
+.report-footer{margin-top:30px; padding-top:14px; border-top:1px solid #ddd; font-size:10px; color:#888; text-align:center;}
+@media print{
+  body *{visibility:hidden;}
+  #printReportArea, #printReportArea *{visibility:visible;}
+  #printReportArea{display:block !important; position:absolute; top:0; left:0; width:100%; background:#fff; color:#111; padding:24px;}
+  #printReportArea table{width:100%; border-collapse:collapse;}
+  #printReportArea td, #printReportArea th{color:#111; border-color:#ddd;}
+  @page{margin:16mm;}
+}
 </style>
 </head>
 <body>
@@ -307,7 +325,8 @@ tr.rowlink:hover{background:var(--paper-3);}
 <div class="bottom-nav" id="bottomNav"></div>
 <div class="modal-overlay" id="modalOverlay"><div class="modal" id="modalBody"></div></div>
 <div class="toast-host" id="toastHost"></div>
+<div id="printReportArea" style="display:none;"></div>
 
-<script type="module" src="app.js?v=6"></script>
+<script type="module" src="app.js?v=7"></script>
 </body>
 </html>

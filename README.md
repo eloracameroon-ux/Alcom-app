@@ -39,26 +39,21 @@ Une fois déployée, ouvre le lien sur mobile → menu du navigateur → **Ajout
 
 ## 4. Ce qui est livré
 - Connexion sécurisée (Firebase Auth), thème sombre aux couleurs Alcom Petroleum (rouge/or)
-- Accès complet pour Administrateur, Direction et DAF/Finance (vue sur l'ensemble des projets)
+- Accès complet pour Administrateur, Direction et DAF/Finance
 - Tableau de bord : KPIs globaux, projets par phase, alertes automatiques
-- Projets : fiche complète, progression en 10 étapes cliquable (navigation libre entre phases, sans ordre imposé)
-- Checklist configurable par projet
-- **Planning** : tâches avec dates et responsables
-- **Travaux** : checklist de construction avec % d'avancement par tâche
-- **Achats / Bons de commande** : création, statuts, montants HT/TTC, mise à jour automatique du montant engagé
-- **Équipements** : quantités prévu/commandé/livré/installé par équipement
-- **Livraisons** : suivi par équipement, BL, statuts (à venir, en transit, livré, partiel, retard)
-- **Documents** : import réel de fichiers PDF, Word, Excel et photos (stockés sur Firebase Storage)
-- **Risques & blocages** : criticité, responsable, échéance
-- Finance par projet (budget, engagé, payé, solde, écart)
-- **Recherche globale** : projets, BC, documents, équipements, fournisseurs
-- **Comparaison entre projets** : tableau avancement/budget/retard côte à côte
+- **Checklist par phase** : clique sur n'importe quelle étape du parcours (Préparation, Études, Autorisations, Conception, Achats, Construction, Installation, Tests, Réception, Mise en service) pour ouvrir son interface dédiée, avec la liste réelle des points à respecter (études géotechniques, autorisations réglementaires, gros œuvre, équipements pétroliers…), responsable, statut, % d'avancement et dates par point. Navigation libre entre les phases.
+- **Achats — cycle complet lié aux fournisseurs** : Demandes de besoin → Pro forma → Bons de commande → Factures → Garanties, chaque sous-module avec ses propres statuts
+- Planning, Travaux (checklist chantier avec %), Équipements, Livraisons, Risques & blocages
+- **Documents** : import réel PDF, Word, Excel et photos (max ~700 Ko, stockés dans Firestore)
+- **Rapports** : génération d'un rapport complet par projet (informations générales, avancement par phase, finance, bons de commande, documents, risques) avec le **papier en-tête Alcom Petroleum** (logo + coordonnées légales), imprimable et exportable en PDF directement depuis le navigateur. Import de documents de rapport (Word/PDF/Excel) possible également.
+- Recherche globale, comparaison entre projets
 - Fournisseurs (base centralisée par catégorie)
-- Alertes automatiques
-- Utilisateurs & rôles
-- PWA installable
+- Utilisateurs & rôles, PWA installable
 
-## 5. Prochaines étapes possibles
+## 5. Comment exporter un rapport en PDF sur iPhone
+Dans l'onglet **Rapports**, clique sur **Générer le rapport** d'un projet → la boîte de dialogue d'impression Safari s'ouvre → choisis **Enregistrer au format PDF** (icône de partage → Imprimer → pincer l'aperçu pour l'agrandir → partager/enregistrer).
+
+## 6. Prochaines étapes possibles
 - Vue Gantt visuelle pour le planning (au-delà de la liste actuelle)
 - Photos multiples par tâche de travaux/livraison (actuellement : documents projet uniquement)
 - Rapports PDF/Excel exportés en un clic (au-delà de l'impression navigateur)
