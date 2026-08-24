@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-14h30";
+export const BUILD_ID = "2026-08-24-14h45";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -36,12 +36,12 @@ window.addEventListener("unhandledrejection", e => showFatalError((e.reason && (
 // 1) CONFIGURATION FIREBASE
 // -------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "AIzaSyDmJQrHqzR96eW8HUPZeIzEBC8gLEMotIE",
-  authDomain: "alcom-petroleum-4518f.firebaseapp.com",
-  projectId: "alcom-petroleum-4518f",
-  storageBucket: "alcom-petroleum-4518f.firebasestorage.app",
-  messagingSenderId: "14449422064",
-  appId: "1:14449422064:web:047f368f57eb1b8ad45c35"
+  apiKey: "AIzaSyAvUs1Ho5jo5W_BTJWv5mO2xVPsns-D_Do",
+  authDomain: "alcom-71d8e.firebaseapp.com",
+  projectId: "alcom-71d8e",
+  storageBucket: "alcom-71d8e.firebasestorage.app",
+  messagingSenderId: "371672323174",
+  appId: "1:371672323174:web:d8acaa44c5c5f9a8d089a7"
 };
 
 let app, auth, db, secondaryApp, secondaryAuth;
