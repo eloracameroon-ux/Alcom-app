@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-17h20";
+export const BUILD_ID = "2026-08-24-17h40";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -111,13 +111,8 @@ const COMPANY = {
 // CHECKLISTS DÉTAILLÉES PAR PHASE — une interface dédiée par étape
 // du projet (Préparation, Études, Autorisations, Conception, Achats,
 // Construction, Installation, Tests, Réception, Mise en service).
-// Deux modèles de points selon la phase :
-//  - "document" (Études, Autorisations) : chaque point suit
-//    Document requis / disponible / validé / expiré (Oui/Non)
-//  - "task" (les autres) : responsable, statut, % avancement, dates
+// Chaque point : responsable, statut, % avancement, dates.
 // -------------------------------------------------------------
-const PHASE_ITEM_MODE = { "Études":"document", "Autorisations":"document" };
-
 const PHASE_CHECKLISTS = {
   "Préparation": ["Identification du terrain","Étude de faisabilité","Accord de principe autorité locale / mairie"],
   "Études": ["Études environnementales","Étude Courant Fort","Étude Courant Faible","Étude Photovoltaïque","Étude Plomberie","Étude Climatisation / Ventilation","Étude géotechnique","Étude topographique","Étude hydrologique (si nécessaire)"],
@@ -133,11 +128,8 @@ const PHASE_CHECKLISTS = {
 function freshPhaseChecklists(){
   const out = {};
   PROJECT_STATUTS.forEach(phase=>{
-    const mode = PHASE_ITEM_MODE[phase] || "task";
     out[phase] = (PHASE_CHECKLISTS[phase]||[]).map(label=>
-      mode==="document"
-        ? {label, requis:"Oui", disponible:"Non", valide:"Non", expire:"Non"}
-        : {label, responsable:"", statut:"Non commencé", avancement:0, dateDebut:"", dateFin:""}
+      ({label, responsable:"", statut:"Non commencé", avancement:0, dateDebut:"", dateFin:""})
     );
   });
   return out;
@@ -674,13 +666,10 @@ window.submitStatut = async function(id){
 
 function renderProjectChecklist(pr){
   const phase = STATE.activePhase || pr.statut || PROJECT_STATUTS[0];
-  const mode = PHASE_ITEM_MODE[phase] || "task";
   const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
   const items = phaseChecklists[phase] || [];
   const total = items.length;
-  const done = mode==="document"
-    ? items.filter(i=>i.valide==="Oui").length
-    : items.filter(i=>i.statut==="Terminé").length;
+  const done = items.filter(i=>i.statut==="Terminé").length;
   const pct = total ? Math.round(done/total*100) : 0;
 
   const phasePicker = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;">
@@ -701,24 +690,8 @@ function renderProjectChecklist(pr){
     </div>
   </div>`;
 
-  let list;
-  if(items.length===0){
-    list = emptyState("projects","Aucun point pour cette phase","");
-  } else if(mode==="document"){
-    // Modèle documentaire : Document requis / disponible / validé / expiré (Oui/Non)
-    list = `<div class="card">${items.map((it,ii)=>`
-      <div style="padding:11px 0;border-bottom:1px solid var(--line);">
-        <strong style="font-size:13.5px;">${it.label}</strong>
-        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
-          ${docToggle(pr.id, phase, ii, "requis", "Requis", it.requis)}
-          ${docToggle(pr.id, phase, ii, "disponible", "Disponible", it.disponible)}
-          ${docToggle(pr.id, phase, ii, "valide", "Validé", it.valide)}
-          ${docToggle(pr.id, phase, ii, "expire", "Expiré", it.expire, true)}
-        </div>
-      </div>`).join("")}</div>`;
-  } else {
-    // Modèle tâche : responsable, statut, % avancement, dates
-    list = `<div class="card">${items.map((it,ii)=>`
+  const list = items.length===0 ? emptyState("projects","Aucun point pour cette phase","") : `<div class="card">
+    ${items.map((it,ii)=>`
       <div style="padding:11px 0;border-bottom:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <strong style="font-size:13.5px;">${it.label}</strong>
@@ -735,23 +708,11 @@ function renderProjectChecklist(pr){
           <input type="range" min="0" max="100" value="${it.avancement||0}" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'avancement',Number(this.value))" style="flex:1;">
           <span style="font-size:11px;width:32px;color:var(--muted);">${it.avancement||0}%</span>
         </div>
-      </div>`).join("")}</div>`;
-  }
+      </div>`).join("")}
+  </div>`;
 
   return phasePicker + header + list;
 }
-function docToggle(projectId, phase, ii, field, label, val, invert){
-  const isYes = val==="Oui";
-  const good = invert ? !isYes : isYes;
-  return `<button class="pill ${good?'ok':'neutral'}" style="border:none;cursor:pointer;" onclick="toggleDocField('${projectId}','${phase}',${ii},'${field}')">${label} : ${val||'Non'}</button>`;
-}
-window.toggleDocField = async function(projectId, phase, ii, field){
-  const pr = STATE.projects.find(p=>p.id===projectId);
-  const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists || freshPhaseChecklists()));
-  const cur = phaseChecklists[phase][ii][field];
-  phaseChecklists[phase][ii][field] = cur==="Oui" ? "Non" : "Oui";
-  await updateDoc(doc(db,"projects",projectId), {phaseChecklists});
-};
 window.updatePhaseItem = async function(projectId, phase, ii, field, val){
   const pr = STATE.projects.find(p=>p.id===projectId);
   const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists || freshPhaseChecklists()));
