@@ -40,23 +40,30 @@ Une fois déployée, ouvre le lien sur mobile → menu du navigateur → **Ajout
 ## 4. Ce qui est livré
 - Connexion sécurisée (Firebase Auth), thème sombre aux couleurs Alcom Petroleum (rouge/or)
 - Accès complet pour Administrateur, Direction et DAF/Finance
-- Tableau de bord : KPIs globaux, projets par phase, alertes automatiques
-- **Checklist par phase** : clique sur n'importe quelle étape du parcours (Préparation, Études, Autorisations, Conception, Achats, Construction, Installation, Tests, Réception, Mise en service) pour ouvrir son interface dédiée, avec la liste réelle des points à respecter (études géotechniques, autorisations réglementaires, gros œuvre, équipements pétroliers…), responsable, statut, % d'avancement et dates par point. Navigation libre entre les phases.
-- **Achats — cycle complet lié aux fournisseurs** : Demandes de besoin → Pro forma → Bons de commande → Factures → Garanties, chaque sous-module avec ses propres statuts
-- Planning, Travaux (checklist chantier avec %), Équipements, Livraisons, Risques & blocages
-- **Documents** : import réel PDF, Word, Excel et photos (max ~700 Ko, stockés dans Firestore)
-- **Rapports** : génération d'un rapport complet par projet (informations générales, avancement par phase, finance, bons de commande, documents, risques) avec le **papier en-tête Alcom Petroleum** (logo + coordonnées légales), imprimable et exportable en PDF directement depuis le navigateur. Import de documents de rapport (Word/PDF/Excel) possible également.
-- Recherche globale, comparaison entre projets
+- Tableau de bord : KPIs globaux (dont documents manquants, commandes en attente, livraisons attendues/en retard), projets par phase, alertes automatiques
+- **8 phases** alignées sur le cahier des charges (Études → Travaux préparatoires → Achats de matériels → Construction → Installation → Tests → Réception → Mise en service). Cliquer sur une étape ouvre directement le module concerné — **Achats de matériels**, **Construction** et **Installation** renvoient vers leurs onglets fonctionnels (Achats, Travaux, Équipements) pour éviter toute redondance ; les autres étapes ont leur propre checklist.
+- **Checklist "Études"** (fusion Administration + Études techniques) : suivi Document requis/disponible/validé/expiré (Oui/Non). Tant qu'un document n'est pas validé, un responsable et des dates prévue/réelle peuvent être renseignés (utile en cas de lenteur administrative) ; une fois validé, ces champs se masquent.
+- **Achats — cycle complet lié aux fournisseurs** : Demandes de besoin → Pro forma → Bons de commande → Factures → Garanties
+- Planning, Travaux (checklist chantier avec %), Équipements (avec coût total et dates de livraison), Livraisons, Risques & blocages
+- **Documents** : import réel PDF, Word, Excel et photos (max ~700 Ko, stockés dans Firestore), date d'expiration, utilisateur ayant importé, **galerie photos** dédiée
+- **Budget** : vue globale tous projets + ventilation par catégorie (Études, Construction, Cuves, Électricité…) par projet
+- **Responsables & travaux** : vue transversale de tous les responsables et fournisseurs actifs, tous projets confondus
+- **Historique** : journal de traçabilité (qui a fait quoi, quand, ancienne → nouvelle valeur) sur les actions clés
+- **Import / Export Excel** : export de la comparaison et des fournisseurs en `.xlsx` ; import de fournisseurs et d'équipements depuis un fichier Excel/CSV, avec détection de doublons
+- **Assistant documentaire** : répond à des questions simples (documents manquants, montants de BC, livraisons, avancement) en s'appuyant uniquement sur les données déjà saisies dans l'app, avec la source citée
+- **Rapports** : rapport complet par projet (infos générales, avancement par phase, planning, travaux, finance, fournisseurs, bons de commande, livraisons, documents manquants, documents, **photos**, alertes, risques) avec le **papier en-tête Alcom Petroleum**, imprimable/exportable en PDF. Import de documents de rapport possible.
+- Recherche globale, comparaison entre projets avec filtres (pays, ville, statut) et export Excel
 - Fournisseurs (base centralisée par catégorie)
+- Alertes enrichies : retards, documents expirants/expirés, BC non signés, factures en retard, livraisons partielles/en retard, dépassement budgétaire
 - Utilisateurs & rôles, PWA installable
 
-## 5. Comment exporter un rapport en PDF sur iPhone
-Dans l'onglet **Rapports**, clique sur **Générer le rapport** d'un projet → la boîte de dialogue d'impression Safari s'ouvre → choisis **Enregistrer au format PDF** (icône de partage → Imprimer → pincer l'aperçu pour l'agrandir → partager/enregistrer).
+### ⚠️ Limites honnêtes à connaître
+- **L'Assistant documentaire n'est pas une IA générative** : il répond par recherche structurée dans les données déjà saisies (pas d'invention, réponses toujours sourcées), mais ne "comprend" pas le langage naturel comme ChatGPT. C'est volontaire et conforme à l'esprit du cahier ("les réponses doivent s'appuyer uniquement sur les données disponibles").
+- **Pas de véritable OCR** (lecture automatique de texte dans les PDF/photos scannées) : cela nécessiterait un service payant externe non configuré. Les documents s'importent et se consultent normalement, juste sans extraction automatique du texte.
+- **Pas de vue Gantt visuelle** pour le planning (liste avec dates/responsables/statuts uniquement).
 
-## 6. Prochaines étapes possibles
-- Vue Gantt visuelle pour le planning (au-delà de la liste actuelle)
-- Photos multiples par tâche de travaux/livraison (actuellement : documents projet uniquement)
-- Rapports PDF/Excel exportés en un clic (au-delà de l'impression navigateur)
-- Import Excel/CSV en masse
-- Assistant documentaire IA (Phase 2, comme prévu au cahier des charges)
-- OCR automatique sur les documents importés
+## 5. Comment exporter un rapport en PDF sur iPhone
+Dans l'onglet **Rapports**, clique sur **Générer le rapport** d'un projet → la boîte de dialogue d'impression Safari s'ouvre → choisis **Enregistrer au format PDF**.
+
+## 6. Nouvelle collection Firestore
+Le journal d'historique utilise une nouvelle collection `activityLogs`, couverte par les mêmes règles Firestore que ci-dessus (aucune action supplémentaire nécessaire si les règles ont déjà été collées).

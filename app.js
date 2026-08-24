@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-17h40";
+export const BUILD_ID = "2026-08-24-19h30";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -84,6 +84,7 @@ const STATE = {
   projectTab: "fiche",
   projects: [],
   suppliers: [],
+  activityLogs: [],
   unsubscribers: []
 };
 
@@ -97,7 +98,7 @@ const ROLES = {
   consultation: "Consultation"
 };
 
-const PROJECT_STATUTS = ["Préparation","Études","Autorisations","Conception","Achats","Construction","Installation","Tests","Réception","Mise en service"];
+const PROJECT_STATUTS = ["Études","Travaux préparatoires","Achats de matériels","Construction","Installation","Tests","Réception","Mise en service"];
 
 // Informations légales de l'entreprise pour le papier en-tête des rapports
 const COMPANY = {
@@ -108,19 +109,30 @@ const COMPANY = {
 };
 
 // -------------------------------------------------------------
-// CHECKLISTS DÉTAILLÉES PAR PHASE — une interface dédiée par étape
-// du projet (Préparation, Études, Autorisations, Conception, Achats,
-// Construction, Installation, Tests, Réception, Mise en service).
-// Chaque point : responsable, statut, % avancement, dates.
+// CHECKLISTS DÉTAILLÉES PAR PHASE — une interface dédiée par étape.
+// Pour éviter toute redondance : les phases qui correspondent déjà à
+// un module fonctionnel dédié (Achats de matériels → onglet Achats,
+// Construction → onglet Travaux, Installation → onglet Équipements)
+// n'ont PAS de checklist séparée : cliquer sur l'étape ouvre
+// directement le module concret correspondant.
+// Les autres phases ont une checklist :
+//  - "Études" (mode document) : fusionne les documents administratifs
+//    à obtenir ET les études techniques. Chaque point suit Document
+//    requis / disponible / validé / expiré (Oui/Non). Tant que le
+//    document n'est pas validé, on peut aussi renseigner un
+//    responsable et des dates prévue/réelle (utile en cas de lenteur
+//    administrative). Une fois validé, ces champs se masquent.
+//  - autres phases (mode tâche) : responsable, statut, % avancement, dates.
 // -------------------------------------------------------------
+const PHASE_ROUTE_TAB = { "Achats de matériels":"achats", "Construction":"travaux", "Installation":"equipements" };
+const PHASE_ITEM_MODE = { "Études":"document" };
+
 const PHASE_CHECKLISTS = {
-  "Préparation": ["Identification du terrain","Étude de faisabilité","Accord de principe autorité locale / mairie"],
-  "Études": ["Études environnementales","Étude Courant Fort","Étude Courant Faible","Étude Photovoltaïque","Étude Plomberie","Étude Climatisation / Ventilation","Étude géotechnique","Étude topographique","Étude hydrologique (si nécessaire)"],
-  "Autorisations": ["Titre foncier ou document de propriété","Bail (si applicable)","Certificat d'urbanisme","Permis de bâtir","Plan de masse cadastral","Plan visé par un architecte agréé","Plan de situation","Certificat de propriété","Licence d'exploitation"],
-  "Conception": ["Plans architecturaux définitifs","Plans de masse","Plans électriques","Plans plomberie","Plans réseaux, cuves et tuyauteries","Validation Direction","Cahier des charges technique finalisé"],
-  "Achats": ["Consultation fournisseurs","Devis reçus","Comparatif des devis","Validation budgétaire","BC cuves hydrocarbures","BC pompes / distributeurs","BC groupe électrogène","BC matériel électrique","BC auvent, enseigne, totem","BC mobilier et équipements boutique"],
-  "Construction": ["Installation chantier","Terrassement","Fouille / excavation","Fondations / dalle","Forage","Clôture du site","Libération des plateaux des cuves","Enlèvement des cuves","Re-épreuve hydraulique des cuves","Vérification des viroles des cuves","Remblai","Structure & maçonnerie","Tuyauterie hydrocarbures","Tests d'étanchéité","Électricité & mise à la terre","Génie civil","Chambres étanches (cuves / pompes)","Auvent, totem, enseigne","Peinture","Carrelage","Menuiserie bois / aluminium"],
-  "Installation": ["Installation des cuves","Installation des pompes / distributeurs","Installations pétrolières (tuyauterie, servicing, distribution, automation, barémage)","Sécurité incendie (extincteurs)","Caméras de surveillance","Borne de recharge électrique","Groupe électrogène","Pont élévateur","Aménagement intérieur boutique (gondoles)","Branding complet + canopy îlots"],
+  "Études": [
+    "Titre foncier ou document de propriété","Bail (si applicable)","Certificat d'urbanisme","Permis de bâtir","Plan de masse cadastral","Plan visé par un architecte agréé","Plan de situation","Certificat de propriété","Licence d'exploitation",
+    "Études environnementales","Étude Courant Fort","Étude Courant Faible","Étude Photovoltaïque","Étude Plomberie","Étude Climatisation / Ventilation","Étude géotechnique","Étude topographique","Étude hydrologique (si nécessaire)"
+  ],
+  "Travaux préparatoires": ["Identification du terrain","Coordonnées GPS","Étude de faisabilité","Accord de principe autorité locale / mairie","Installation du chantier","Barrières & signalisation","Base vie","Forage","Clôture du site","Terrassement","Nivellement","Fouille / excavation"],
   "Tests": ["Tests d'étanchéité finaux","Tests électriques","Tests des pompes / débit","Tests de sécurité incendie","Contrôle qualité carburant","Essais de mise en pression"],
   "Réception": ["Réception des travaux (PV)","Levée des réserves","Réception des équipements fournisseurs","Contrôle de conformité réglementaire","Inspection finale des autorités"],
   "Mise en service": ["Recrutement du personnel","EPI du personnel","Formation sécurité incendie","Formation manipulation produits pétroliers","Formation communication","Approvisionnement produits pétroliers & lubrifiants","Approvisionnement produits alimentaires / boutique","Autorisation d'exploitation définitive","Ouverture officielle"]
@@ -128,8 +140,12 @@ const PHASE_CHECKLISTS = {
 function freshPhaseChecklists(){
   const out = {};
   PROJECT_STATUTS.forEach(phase=>{
+    if(PHASE_ROUTE_TAB[phase]) return; // pas de checklist : renvoie vers le module dédié
+    const mode = PHASE_ITEM_MODE[phase] || "task";
     out[phase] = (PHASE_CHECKLISTS[phase]||[]).map(label=>
-      ({label, responsable:"", statut:"Non commencé", avancement:0, dateDebut:"", dateFin:""})
+      mode==="document"
+        ? {label, requis:"Oui", disponible:"Non", valide:"Non", expire:"Non", responsable:"", dateDebut:"", dateFin:""}
+        : {label, responsable:"", statut:"Non commencé", avancement:0, dateDebut:"", dateFin:""}
     );
   });
   return out;
@@ -137,6 +153,7 @@ function freshPhaseChecklists(){
 
 // Catalogue standard des équipements d'une station-service (ajout rapide)
 const EQUIPEMENT_CATALOG = ["Cuves hydrocarbures","Tuyauteries hydrocarbures (UPP/KPS/NUPI)","Lot de servicing complet","TAG Reader","Borne de recharge électrique","Tampons de piste","Chambres étanches sous pompes","Chambres étanches pour cuves","Forage","Clôture du site","Électricité (CF / CFB / Photovoltaïque)","Installations pétrolières (tuyauterie/servicing/distrib./autom./barémage)","Auvent & Totem","Groupe électrogène","Branding complet + canopy îlots","Peinture","Carrelage","Plomberie","Caméras de surveillance","Sécurité incendie (extincteurs)","Menuiserie bois","Menuiserie aluminium","Pont élévateur","Aménagement intérieur boutique (gondoles)"];
+
 
 // -------------------------------------------------------------
 // UTILITAIRES
@@ -157,6 +174,22 @@ function toast(msg, isErr=false){
   t.textContent = msg;
   host.appendChild(t);
   setTimeout(()=>t.remove(), 3200);
+}
+
+// Journal d'historique / traçabilité (§25 du cahier des charges)
+async function logActivity(projectId, categorie, action, ancienneValeur, nouvelleValeur){
+  try{
+    const pr = STATE.projects.find(p=>p.id===projectId);
+    await addDoc(collection(db,"activityLogs"), {
+      projectId: projectId||null,
+      projectNom: pr ? pr.nom : null,
+      categorie, action,
+      ancienneValeur: ancienneValeur!=null ? String(ancienneValeur) : "",
+      nouvelleValeur: nouvelleValeur!=null ? String(nouvelleValeur) : "",
+      user: STATE.profile ? STATE.profile.nom : "—",
+      createdAt: serverTimestamp()
+    });
+  }catch(e){ console.error("logActivity", e); }
 }
 
 function openModal(html){
@@ -198,9 +231,14 @@ const NAV_ITEMS = [
   {id:"projects", label:"Projets", ic:"projects"},
   {id:"recherche", label:"Recherche", ic:"search"},
   {id:"comparaison", label:"Comparaison", ic:"rapports"},
+  {id:"budget", label:"Budget", ic:"finance"},
+  {id:"responsables", label:"Responsables & travaux", ic:"travaux"},
   {id:"fournisseurs", label:"Fournisseurs", ic:"fournisseurs"},
   {id:"alertes", label:"Alertes", ic:"alertes"},
+  {id:"assistant", label:"Assistant", ic:"documents"},
   {id:"rapports", label:"Rapports", ic:"rapports"},
+  {id:"historique", label:"Historique", ic:"planning"},
+  {id:"importexport", label:"Import / Export", ic:"achats"},
   {id:"parametres", label:"Paramètres", ic:"parametres"}
 ];
 const BOTTOM_NAV = ["dashboard","projects","recherche","alertes","parametres"];
@@ -245,9 +283,14 @@ const TITLES = {
   projects: ["Projets","Liste des stations en cours et planifiées"],
   recherche: ["Recherche globale","Projets, fournisseurs, bons de commande, documents"],
   comparaison: ["Comparaison des projets","Avancement, budget et retards côte à côte"],
+  budget: ["Budget","Budget arrêté et ventilation par catégorie, projet par projet"],
+  responsables: ["Responsables & travaux","Vue transversale sur tous les projets"],
   fournisseurs: ["Fournisseurs & prestataires","Base centralisée"],
   alertes: ["Alertes","Retards, échéances et documents manquants"],
+  assistant: ["Assistant documentaire","Questions sur les données du projet, réponses tracées à la source"],
   rapports: ["Rapports","Synthèses par projet et par direction"],
+  historique: ["Historique","Traçabilité des actions et modifications"],
+  importexport: ["Import / Export","Fournisseurs, équipements et rapports en Excel/CSV"],
   parametres: ["Paramètres","Utilisateurs, rôles et configuration"]
 };
 
@@ -266,9 +309,14 @@ function render(){
   else if(STATE.route==="projects") c.innerHTML = STATE.projectId ? renderProjectDetail() : renderProjectsList();
   else if(STATE.route==="recherche") c.innerHTML = renderRecherche();
   else if(STATE.route==="comparaison") c.innerHTML = renderComparaison();
+  else if(STATE.route==="budget") c.innerHTML = renderBudgetGlobal();
+  else if(STATE.route==="responsables") c.innerHTML = renderResponsablesGlobal();
   else if(STATE.route==="fournisseurs") c.innerHTML = renderFournisseurs();
   else if(STATE.route==="alertes") c.innerHTML = renderAlertes();
+  else if(STATE.route==="assistant") c.innerHTML = renderAssistant();
   else if(STATE.route==="rapports") c.innerHTML = renderRapports();
+  else if(STATE.route==="historique") c.innerHTML = renderHistorique();
+  else if(STATE.route==="importexport") c.innerHTML = renderImportExport();
   else if(STATE.route==="parametres") c.innerHTML = renderParametres();
   bindContentEvents();
 }
@@ -314,13 +362,37 @@ window.doGlobalSearch = function(q){
 // -------------------------------------------------------------
 function renderComparaison(){
   if(STATE.projects.length===0) return emptyState("projects","Aucun projet à comparer","");
-  return `<div class="card"><table><thead><tr><th>Projet</th><th>Avancement</th><th>Budget</th><th>Engagé</th><th>Payé</th><th>Reste</th><th>Retard</th></tr></thead><tbody>
-    ${STATE.projects.map(pr=>{
+  const f = STATE.comparaisonFilters || {};
+  let list = STATE.projects;
+  if(f.pays) list = list.filter(p=>p.pays===f.pays);
+  if(f.ville) list = list.filter(p=>p.ville===f.ville);
+  if(f.statut) list = list.filter(p=>p.statut===f.statut);
+  const pays = [...new Set(STATE.projects.map(p=>p.pays).filter(Boolean))];
+  const villes = [...new Set(STATE.projects.map(p=>p.ville).filter(Boolean))];
+
+  const filtres = `<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;">
+    <select onchange="setComparaisonFilter('pays',this.value)" style="font-size:12.5px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+      <option value="">Tous pays</option>${pays.map(p=>`<option ${f.pays===p?'selected':''}>${p}</option>`).join("")}
+    </select>
+    <select onchange="setComparaisonFilter('ville',this.value)" style="font-size:12.5px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+      <option value="">Toutes villes</option>${villes.map(v=>`<option ${f.ville===v?'selected':''}>${v}</option>`).join("")}
+    </select>
+    <select onchange="setComparaisonFilter('statut',this.value)" style="font-size:12.5px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+      <option value="">Toutes phases</option>${PROJECT_STATUTS.map(s=>`<option ${f.statut===s?'selected':''}>${s}</option>`).join("")}
+    </select>
+    <button class="btn sm" onclick="exportComparaisonExcel()">📊 Exporter en Excel</button>
+  </div>`;
+
+  const table = `<div class="card"><table><thead><tr><th>Projet</th><th>Pays</th><th>Ville</th><th>Responsable</th><th>Avancement</th><th>Budget</th><th>Engagé</th><th>Payé</th><th>Reste</th><th>Retard</th></tr></thead><tbody>
+    ${list.map(pr=>{
       const idx = PROJECT_STATUTS.indexOf(pr.statut);
       const avance = Math.round(((idx+1)/PROJECT_STATUTS.length)*100);
       const late = pr.dateFinPrevue && pr.statut!=="Mise en service" && new Date(pr.dateFinPrevue) < new Date() ? daysBetween(pr.dateFinPrevue, todayISO()) : 0;
       return `<tr class="rowlink" onclick="goTo('projects',{projectId:'${pr.id}'})">
         <td><strong>${pr.nom}</strong></td>
+        <td>${pr.pays||'—'}</td>
+        <td>${pr.ville||'—'}</td>
+        <td>${pr.responsable||'—'}</td>
         <td>${avance}%</td>
         <td>${fmt(pr.budgetInitial)}</td>
         <td>${fmt(pr.montantEngage)}</td>
@@ -330,7 +402,320 @@ function renderComparaison(){
       </tr>`;
     }).join("")}
   </tbody></table></div>`;
+
+  return filtres + table;
 }
+window.setComparaisonFilter = function(field, val){
+  STATE.comparaisonFilters = {...(STATE.comparaisonFilters||{}), [field]: val};
+  render();
+};
+window.exportComparaisonExcel = function(){
+  if(typeof XLSX==="undefined"){ toast("Bibliothèque Excel non chargée — vérifie ta connexion", true); return; }
+  const rows = STATE.projects.map(pr=>{
+    const idx = PROJECT_STATUTS.indexOf(pr.statut);
+    return {
+      Projet: pr.nom, Code: pr.code||"", Pays: pr.pays||"", Ville: pr.ville||"", Responsable: pr.responsable||"",
+      Statut: pr.statut, "Avancement %": Math.round(((idx+1)/PROJECT_STATUTS.length)*100),
+      "Budget initial": pr.budgetInitial||0, "Montant engagé": pr.montantEngage||0, "Montant payé": pr.montantPaye||0,
+      "Reste à payer": (pr.montantEngage||0)-(pr.montantPaye||0)
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Comparaison");
+  XLSX.writeFile(wb, `Alcom_Petroleum_Comparaison_${todayISO()}.xlsx`);
+};
+
+// -------------------------------------------------------------
+// BUDGET — vue globale + ventilation par catégorie
+// -------------------------------------------------------------
+const BUDGET_CATEGORIES = ["Études","Administratif","Construction","Cuves","Pompes","Électricité","Génie civil","Transport","Installation","Sécurité","Mobilier","Informatique","Autres"];
+function renderBudgetGlobal(){
+  if(STATE.projects.length===0) return emptyState("projects","Aucun projet","");
+  const totalBudget = STATE.projects.reduce((s,p)=>s+(Number(p.budgetInitial)||0),0);
+  const totalEngage = STATE.projects.reduce((s,p)=>s+(Number(p.montantEngage)||0),0);
+  const totalPaye = STATE.projects.reduce((s,p)=>s+(Number(p.montantPaye)||0),0);
+  return `
+    <div class="kpi-grid">
+      <div class="kpi"><div class="lbl">Budget total (tous projets)</div><div class="val">${fmt(totalBudget)}</div></div>
+      <div class="kpi"><div class="lbl">Engagé total</div><div class="val">${fmt(totalEngage)}</div></div>
+      <div class="kpi accent"><div class="lbl">Payé total</div><div class="val">${fmt(totalPaye)}</div></div>
+    </div>
+    ${STATE.projects.map(pr=>{
+      const bl = pr.budgetLines || {};
+      const totalVentile = BUDGET_CATEGORIES.reduce((s,c)=>s+(Number(bl[c])||0),0);
+      const ecart = (Number(pr.budgetInitial)||0) - (Number(pr.montantEngage)||0);
+      return `<div class="card">
+        <div class="section-title"><h3 style="margin:0;">${pr.nom}</h3><button class="btn sm" onclick="openBudgetLinesModal('${pr.id}')">Modifier la ventilation</button></div>
+        ${infoRow("Budget initial", fmtXAF(pr.budgetInitial))}
+        ${infoRow("Budget révisé", fmtXAF(pr.budgetRevise||pr.budgetInitial))}
+        ${infoRow("Engagé", fmtXAF(pr.montantEngage))}
+        ${infoRow("Payé", fmtXAF(pr.montantPaye))}
+        ${infoRow("Écart budgétaire", `${ecart>=0?'':'⚠️ '}${fmtXAF(ecart)}`)}
+        <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px;">
+          <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Ventilation par catégorie ${totalVentile>0?`(${fmt(totalVentile)} ventilé)`:''}</div>
+          ${BUDGET_CATEGORIES.filter(c=>Number(bl[c])>0).map(c=>`
+            <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px;">
+              <span style="color:var(--muted);">${c}</span><span>${fmt(bl[c])}</span>
+            </div>`).join("") || `<p style="font-size:12px;color:var(--muted);">Pas encore ventilé.</p>`}
+        </div>
+      </div>`;
+    }).join("")}
+  `;
+}
+window.openBudgetLinesModal = function(projectId){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const bl = pr.budgetLines || {};
+  openModal(`<div class="modal-head"><h3>Ventilation du budget</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      ${BUDGET_CATEGORIES.map(c=>`<div class="f-field"><label>${c}</label><input type="number" id="bl_${c.replace(/\s/g,'')}" value="${bl[c]||0}"></div>`).join("")}
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitBudgetLines('${projectId}')">Enregistrer</button></div>`);
+};
+window.submitBudgetLines = async function(projectId){
+  const budgetLines = {};
+  BUDGET_CATEGORIES.forEach(c=>{ budgetLines[c] = Number($(`#bl_${c.replace(/\s/g,'')}`).value||0); });
+  await updateDoc(doc(db,"projects",projectId), {budgetLines});
+  closeModal(); toast("Ventilation budgétaire enregistrée ✓");
+};
+
+// -------------------------------------------------------------
+// RESPONSABLES & TRAVAUX — vue transversale sur tous les projets
+// -------------------------------------------------------------
+function renderResponsablesGlobal(){
+  const parPersonne = {};
+  STATE.projects.forEach(pr=>{
+    const addTask = (nom, label, source)=>{
+      if(!nom) return;
+      if(!parPersonne[nom]) parPersonne[nom] = [];
+      parPersonne[nom].push({projet:pr.nom, label, source});
+    };
+    if(pr.responsable) addTask(pr.responsable, "Responsable du projet", pr.nom);
+    Object.entries(pr.phaseChecklists||{}).forEach(([phase, items])=>{
+      (items||[]).forEach(it=> addTask(it.responsable, it.label, phase));
+    });
+    (pr.travaux||[]).forEach(t=> addTask(t.nom ? null : null, null, null)); // travaux n'a pas de responsable dédié pour l'instant
+    (pr.planning||[]).forEach(t=> addTask(t.responsable, t.nom, "Planning"));
+  });
+  const personnes = Object.keys(parPersonne).sort();
+
+  const responsablesHtml = personnes.length===0 ? emptyState("projects","Aucun responsable assigné","Les responsables assignés dans les checklists et le planning apparaîtront ici.") :
+    personnes.map(nom=>`<div class="card">
+      <h3>${nom}</h3>
+      ${parPersonne[nom].map(t=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;">
+        <span>${t.label}</span><span style="color:var(--muted);">${t.projet}${t.source?` · ${t.source}`:''}</span>
+      </div>`).join("")}
+    </div>`).join("");
+
+  const fournisseursActifs = {};
+  STATE.projects.forEach(pr=>{
+    (pr.bonsCommande||[]).forEach(b=>{
+      if(!fournisseursActifs[b.fournisseur]) fournisseursActifs[b.fournisseur] = [];
+      fournisseursActifs[b.fournisseur].push(pr.nom);
+    });
+  });
+  const fournisseursHtml = Object.keys(fournisseursActifs).length===0 ? "" : `
+    <div class="section-title" style="margin-top:20px;"><h2>Fournisseurs actifs (avec BC en cours)</h2></div>
+    <div class="card">${Object.entries(fournisseursActifs).map(([f,projets])=>`
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;">
+        <span><strong>${f}</strong></span><span style="color:var(--muted);">${[...new Set(projets)].join(", ")}</span>
+      </div>`).join("")}</div>`;
+
+  return `<div class="section-title"><h2>Responsables — toutes tâches, tous projets</h2></div>` + responsablesHtml + fournisseursHtml;
+}
+
+// -------------------------------------------------------------
+// ASSISTANT — questions sur les données du projet (§9)
+// Répond uniquement à partir des données disponibles, source citée.
+// Pas d'OCR ni de génération de texte libre : recherche structurée.
+// -------------------------------------------------------------
+function renderAssistant(){
+  return `
+    <div class="card">
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Pose une question sur un projet, un document, un fournisseur ou une commande. Les réponses s'appuient uniquement sur les données enregistrées dans l'application, jamais sur des informations inventées.</p>
+      <div style="display:flex;gap:8px;">
+        <input id="assistantQ" placeholder="Ex : Quel document manque pour Station Madagascar ?" style="flex:1;padding:11px 14px;border-radius:10px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);font-size:14px;" onkeydown="if(event.key==='Enter')askAssistant()">
+        <button class="btn primary" onclick="askAssistant()">Demander</button>
+      </div>
+    </div>
+    <div id="assistantAnswer"></div>
+  `;
+}
+window.askAssistant = function(){
+  const q = $("#assistantQ").value.trim();
+  const host = $("#assistantAnswer");
+  if(!q){ return; }
+  const ql = q.toLowerCase();
+  const answers = [];
+
+  // Cherche le projet mentionné dans la question
+  const projetCite = STATE.projects.find(pr => ql.includes(pr.nom.toLowerCase()) || (pr.ville && ql.includes(pr.ville.toLowerCase())));
+  const projetsAConsiderer = projetCite ? [projetCite] : STATE.projects;
+
+  if(ql.includes("document") && (ql.includes("manque") || ql.includes("manquant"))){
+    projetsAConsiderer.forEach(pr=>{
+      const manquants = [];
+      Object.entries(pr.phaseChecklists||{}).forEach(([phase, items])=>{
+        (items||[]).forEach(it=>{ if(it.valide !== undefined && it.valide !== "Oui" && it.requis === "Oui") manquants.push(`${it.label} (${phase})`); });
+      });
+      answers.push({source:pr.nom, text: manquants.length ? `Documents non encore validés : ${manquants.join(", ")}.` : "Aucun document manquant identifié."});
+    });
+  } else if(ql.includes("bon de commande") || ql.includes(" bc ") || ql.startsWith("bc")){
+    projetsAConsiderer.forEach(pr=>{
+      (pr.bonsCommande||[]).forEach(b=>{
+        if(!projetCite || ql.includes((b.fournisseur||"").toLowerCase()) || ql.includes((b.numero||"").toLowerCase()) || projetCite){
+          answers.push({source:`${pr.nom} — ${b.numero||'BC'}`, text:`${b.fournisseur} : ${fmt(b.montantTTC)} ${b.devise||'FCFA'}, statut ${b.statut}.`});
+        }
+      });
+    });
+  } else if(ql.includes("livr")){
+    projetsAConsiderer.forEach(pr=>{
+      (pr.livraisons||[]).forEach(l=>{
+        answers.push({source:pr.nom, text:`${l.equipement} — ${l.fournisseur||'—'} : ${l.qteLivree||0}/${l.qteCommandee||0} livré(s), statut ${l.statut}, prévu le ${l.datePrevue||'?'}.`});
+      });
+    });
+  } else if(ql.includes("budget") || ql.includes("coût") || ql.includes("cout") || ql.includes("montant")){
+    projetsAConsiderer.forEach(pr=>{
+      answers.push({source:pr.nom, text:`Budget ${fmt(pr.budgetInitial)} FCFA, engagé ${fmt(pr.montantEngage)}, payé ${fmt(pr.montantPaye)}, solde ${fmt((pr.montantEngage||0)-(pr.montantPaye||0))} FCFA.`});
+    });
+  } else if(ql.includes("avancement") || ql.includes("où en est") || ql.includes("statut") || ql.includes("synthèse") || ql.includes("situation")){
+    projetsAConsiderer.forEach(pr=>{
+      const idx = PROJECT_STATUTS.indexOf(pr.statut);
+      const avance = Math.round(((idx+1)/PROJECT_STATUTS.length)*100);
+      const risques = (pr.risques||[]).length;
+      answers.push({source:pr.nom, text:`Phase actuelle : ${pr.statut} (${avance}% du parcours). ${fmt(pr.montantEngage)} FCFA engagés, ${fmt(pr.montantPaye)} payés. ${risques} risque(s) signalé(s).`});
+    });
+  } else {
+    // Recherche générique dans les documents
+    projetsAConsiderer.forEach(pr=>{
+      (pr.documents||[]).forEach(d=>{
+        if(ql.split(" ").some(w=>w.length>3 && d.nom.toLowerCase().includes(w))){
+          answers.push({source:`${pr.nom} — Documents`, text:`${d.nom} (${d.type}) : statut ${d.statut}, ajouté le ${d.date}.`});
+        }
+      });
+    });
+  }
+
+  if(answers.length===0){
+    host.innerHTML = `<div class="card"><p style="font-size:13px;color:var(--muted);">Aucune donnée trouvée pour répondre précisément à cette question. Essaie de citer un nom de projet, un fournisseur ou un type de document.</p></div>`;
+    return;
+  }
+  host.innerHTML = `<div class="card">${answers.slice(0,15).map(a=>`
+    <div style="padding:9px 0;border-bottom:1px solid var(--line);">
+      <div style="font-size:13.5px;">${a.text}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">Source : ${a.source}</div>
+    </div>`).join("")}</div>`;
+};
+
+// -------------------------------------------------------------
+// HISTORIQUE — traçabilité des actions (§25)
+// -------------------------------------------------------------
+function renderHistorique(){
+  const logs = STATE.activityLogs || [];
+  if(logs.length===0) return emptyState("alertes","Aucune activité enregistrée","Les modifications importantes apparaîtront ici au fur et à mesure.");
+  return `<div class="card">${logs.map(l=>`
+    <div style="padding:10px 0;border-bottom:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;gap:10px;">
+        <strong style="font-size:13px;">${l.action}</strong>
+        <span style="font-size:11px;color:var(--muted);">${l.createdAt && l.createdAt.toDate ? l.createdAt.toDate().toLocaleString('fr-FR') : ''}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px;">
+        ${l.projectNom?`${l.projectNom} · `:''}${l.categorie} · par ${l.user}
+        ${l.ancienneValeur||l.nouvelleValeur ? ` · ${esc(l.ancienneValeur)} → ${esc(l.nouvelleValeur)}` : ''}
+      </div>
+    </div>`).join("")}</div>`;
+}
+
+// -------------------------------------------------------------
+// IMPORT / EXPORT — Excel / CSV (§27)
+// -------------------------------------------------------------
+function renderImportExport(){
+  return `
+    <div class="card">
+      <h3>Export</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Génère un fichier Excel prêt à partager.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn gold sm" onclick="exportComparaisonExcel()">📊 Comparaison des projets</button>
+        <button class="btn gold sm" onclick="exportFournisseursExcel()">📊 Fournisseurs</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Import — Fournisseurs</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Fichier Excel ou CSV avec les colonnes : Nom, Catégorie, Pays, Contact, Conditions.</p>
+      <input type="file" id="importFournisseursFile" accept=".csv,.xlsx,.xls" style="margin-bottom:10px;">
+      <button class="btn primary sm" onclick="importFournisseursExcel()">Importer</button>
+    </div>
+    <div class="card">
+      <h3>Import — Équipements (dans un projet)</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Sélectionne d'abord le projet, puis un fichier avec les colonnes : Nom, Catégorie, Prévu, Commandé, Livré, Installé, CoûtUnitaire.</p>
+      <select id="importEquipProject" style="width:100%;margin-bottom:10px;padding:10px 11px;border-radius:9px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+        ${STATE.projects.map(p=>`<option value="${p.id}">${p.nom}</option>`).join("")}
+      </select>
+      <input type="file" id="importEquipFile" accept=".csv,.xlsx,.xls" style="margin-bottom:10px;">
+      <button class="btn primary sm" onclick="importEquipementsExcel()">Importer</button>
+    </div>
+  `;
+}
+window.exportFournisseursExcel = function(){
+  if(typeof XLSX==="undefined"){ toast("Bibliothèque Excel non chargée", true); return; }
+  const rows = STATE.suppliers.map(s=>({Nom:s.nom, Catégorie:s.categorie, Pays:s.pays||"", Contact:s.contact||"", Conditions:s.conditions||""}));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Fournisseurs");
+  XLSX.writeFile(wb, `Alcom_Petroleum_Fournisseurs_${todayISO()}.xlsx`);
+};
+window.importFournisseursExcel = function(){
+  const file = $("#importFournisseursFile").files[0];
+  if(!file){ toast("Sélectionne un fichier", true); return; }
+  if(typeof XLSX==="undefined"){ toast("Bibliothèque Excel non chargée", true); return; }
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:"binary"});
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      let count = 0;
+      for(const row of rows){
+        const nom = row.Nom || row.nom;
+        if(!nom) continue;
+        // Vérifie les doublons avant import
+        if(STATE.suppliers.some(s=>s.nom.toLowerCase()===String(nom).toLowerCase())) continue;
+        await addDoc(collection(db,"suppliers"), {
+          nom:String(nom), categorie:row.Catégorie||row.categorie||"Autres", pays:row.Pays||row.pays||"",
+          contact:row.Contact||row.contact||"", conditions:row.Conditions||row.conditions||"", createdAt:serverTimestamp()
+        });
+        count++;
+      }
+      toast(`${count} fournisseur(s) importé(s) ✓ (doublons ignorés)`);
+    }catch(err){ toast("Erreur d'import : "+err.message, true); }
+  };
+  reader.readAsBinaryString(file);
+};
+window.importEquipementsExcel = function(){
+  const projectId = $("#importEquipProject").value;
+  const file = $("#importEquipFile").files[0];
+  if(!projectId || !file){ toast("Sélectionne un projet et un fichier", true); return; }
+  if(typeof XLSX==="undefined"){ toast("Bibliothèque Excel non chargée", true); return; }
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:"binary"});
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      const pr = STATE.projects.find(p=>p.id===projectId);
+      const nouveaux = rows.filter(r=>r.Nom||r.nom).map(r=>({
+        nom:String(r.Nom||r.nom), categorie:r.Catégorie||r.categorie||"", fournisseur:r.Fournisseur||r.fournisseur||"",
+        prevu:Number(r.Prévu||r.prevu||0), commande:Number(r.Commandé||r.commande||0),
+        livre:Number(r.Livré||r.livre||0), installe:Number(r.Installé||r.installe||0),
+        coutUnitaire:Number(r.CoûtUnitaire||r.coutUnitaire||0)
+      }));
+      const equipements = [...(pr.equipements||[]), ...nouveaux];
+      await updateDoc(doc(db,"projects",projectId), {equipements});
+      toast(`${nouveaux.length} équipement(s) importé(s) ✓`);
+    }catch(err){ toast("Erreur d'import : "+err.message, true); }
+  };
+  reader.readAsBinaryString(file);
+};
+
+
 
 // -------------------------------------------------------------
 // DASHBOARD
@@ -353,6 +738,12 @@ function renderDashboard(){
   const enCours = p.filter(pr=>pr.statut!=="Mise en service").length;
   const termines = p.filter(pr=>pr.statut==="Mise en service").length;
   const alerts = computeAlerts();
+  let docsManquants=0, commandesAttente=0, livraisonsAttendues=0, livraisonsRetard=0;
+  p.forEach(pr=>{
+    Object.values(pr.phaseChecklists||{}).forEach(items=>(items||[]).forEach(it=>{ if(it.valide!==undefined && it.valide!=="Oui" && it.requis==="Oui") docsManquants++; }));
+    (pr.bonsCommande||[]).forEach(b=>{ if(["Brouillon","En validation","Validé"].includes(b.statut)) commandesAttente++; });
+    (pr.livraisons||[]).forEach(l=>{ if(l.statut==="À venir"||l.statut==="En transit") livraisonsAttendues++; if(l.statut==="Retard") livraisonsRetard++; });
+  });
 
   return `
     <div class="kpi-grid">
@@ -360,6 +751,9 @@ function renderDashboard(){
       <div class="kpi"><div class="lbl">Budget total</div><div class="val">${fmt(budgetTotal)}</div><div class="sub">FCFA cumulé</div></div>
       <div class="kpi"><div class="lbl">Montant engagé</div><div class="val">${fmt(engage)}</div><div class="sub">${budgetTotal? Math.round(engage/budgetTotal*100):0}% du budget</div></div>
       <div class="kpi accent"><div class="lbl">Montant payé</div><div class="val">${fmt(paye)}</div><div class="sub">Reste à payer : ${fmt(engage-paye)}</div></div>
+      <div class="kpi"><div class="lbl">Documents manquants</div><div class="val" style="color:${docsManquants?'var(--gold)':'var(--ok)'}">${docsManquants}</div></div>
+      <div class="kpi"><div class="lbl">Commandes en attente</div><div class="val">${commandesAttente}</div></div>
+      <div class="kpi"><div class="lbl">Livraisons attendues</div><div class="val">${livraisonsAttendues}</div><div class="sub">${livraisonsRetard} en retard</div></div>
       <div class="kpi"><div class="lbl">Alertes actives</div><div class="val" style="color:${alerts.length?'var(--red)':'var(--ok)'}">${alerts.length}</div><div class="sub">documents, retards, paiements</div></div>
     </div>
 
@@ -394,7 +788,7 @@ function renderDashboard(){
 
 function statutPillClass(statut){
   if(statut==="Mise en service") return "ok";
-  if(["Préparation","Études","Autorisations"].includes(statut)) return "neutral";
+  if(["Études","Travaux préparatoires"].includes(statut)) return "neutral";
   if(["Construction","Installation"].includes(statut)) return "warn";
   return "info";
 }
@@ -431,11 +825,37 @@ function computeAlerts(){
     }
     const engage = Number(pr.montantEngage||0), paye = Number(pr.montantPaye||0);
     if(engage>paye) alerts.push({type:"Paiement", level:"warn", text:`${pr.nom} — solde restant de ${fmt(engage-paye)} FCFA.`});
+    if(pr.budgetInitial && engage > Number(pr.budgetInitial)) alerts.push({type:"Dépassement budgétaire", level:"bad", text:`${pr.nom} — engagé (${fmt(engage)}) dépasse le budget initial (${fmt(pr.budgetInitial)}).`});
     const pcl = pr.phaseChecklists || {};
     Object.values(pcl).forEach(items=>{
       (items||[]).forEach(it=>{
         if(it.statut==="Bloqué") alerts.push({type:"Étape bloquée", level:"bad", text:`${pr.nom} — ${it.label}`});
+        if(it.expire==="Oui") alerts.push({type:"Document expiré", level:"bad", text:`${pr.nom} — ${it.label}`});
       });
+    });
+    (pr.documents||[]).forEach(d=>{
+      if(!d.dateExpiration) return;
+      const j = daysBetween(todayISO(), d.dateExpiration);
+      if(j < 0) alerts.push({type:"Document expiré", level:"bad", text:`${pr.nom} — ${d.nom}`});
+      else if(j <= 30) alerts.push({type:"Document expirant", level:"warn", text:`${pr.nom} — ${d.nom} expire dans ${j} j.`});
+    });
+    (pr.bonsCommande||[]).forEach(b=>{
+      if(b.statut==="Validé" || b.statut==="En validation") alerts.push({type:"BC non signé", level:"warn", text:`${pr.nom} — ${b.numero||b.fournisseur} en attente de signature.`});
+    });
+    (pr.factures||[]).forEach(f=>{
+      if(f.statut==="À payer" && f.echeance){
+        const j = daysBetween(todayISO(), f.echeance);
+        if(j < 0) alerts.push({type:"Facture en retard", level:"bad", text:`${pr.nom} — ${f.numero||f.fournisseur} : échéance dépassée de ${-j} j.`});
+        else if(j <= 7) alerts.push({type:"Échéance paiement", level:"warn", text:`${pr.nom} — ${f.numero||f.fournisseur} : à payer dans ${j} j.`});
+      }
+    });
+    (pr.livraisons||[]).forEach(l=>{
+      if(l.statut==="Livraison partielle") alerts.push({type:"Livraison partielle", level:"warn", text:`${pr.nom} — ${l.equipement} : ${l.qteLivree||0}/${l.qteCommandee||0}.`});
+      if(l.statut==="Retard") alerts.push({type:"Livraison en retard", level:"bad", text:`${pr.nom} — ${l.equipement} (${l.fournisseur||'—'}).`});
+      else if(l.datePrevue && l.statut!=="Livré"){
+        const j = daysBetween(todayISO(), l.datePrevue);
+        if(j>=0 && j<=7) alerts.push({type:"Livraison proche", level:"warn", text:`${pr.nom} — ${l.equipement} prévue dans ${j} j.`});
+      }
     });
   });
   return alerts;
@@ -514,6 +934,7 @@ window.submitNewProject = async function(){
   };
   try{
     const ref = await addDoc(collection(db,"projects"), data);
+    logActivity(ref.id, "Projet", "Création du projet", "", nom);
     closeModal(); toast("Projet créé ✓");
     goTo("projects",{projectId:ref.id});
   }catch(e){ toast("Erreur : "+e.message, true); }
@@ -559,7 +980,11 @@ function renderProjectDetail(){
       <span class="mono" style="font-size:12px;color:var(--muted)">${pr.code||''}</span>
     </div>
     <div class="stepper">
-      ${PROJECT_STATUTS.map((s,i)=>`<div class="step ${i<idx?'done':i===idx?'current':''}" onclick="goTo('projects',{projectId:'${pr.id}',projectTab:'checklist',phase:'${s}'})" style="cursor:pointer;">${s}</div>`).join("")}
+      ${PROJECT_STATUTS.map((s,i)=>{
+        const targetTab = PHASE_ROUTE_TAB[s] || "checklist";
+        const opts = PHASE_ROUTE_TAB[s] ? `{projectId:'${pr.id}',projectTab:'${targetTab}'}` : `{projectId:'${pr.id}',projectTab:'checklist',phase:'${s}'}`;
+        return `<div class="step ${i<idx?'done':i===idx?'current':''}" onclick="goTo('projects',${opts})" style="cursor:pointer;">${s}</div>`;
+      }).join("")}
     </div>
     <div style="display:flex;gap:6px;margin:16px 0;border-bottom:1px solid var(--line);overflow-x:auto;">
       ${PROJECT_TABS.map(t=>`<div onclick="goTo('projects',{projectId:'${pr.id}',projectTab:'${t.id}'})"
@@ -642,7 +1067,10 @@ window.submitEditProject = async function(id){
 };
 
 window.jumpToPhase = async function(projectId, statut){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const ancien = pr ? pr.statut : "";
   await updateDoc(doc(db,"projects",projectId), {statut});
+  logActivity(projectId, "Projet", "Changement de phase", ancien, statut);
   toast("Phase : " + statut + " ✓");
 };
 
@@ -660,21 +1088,29 @@ window.openStatutModal = function(id){
   `);
 };
 window.submitStatut = async function(id){
-  await updateDoc(doc(db,"projects",id), {statut:$("#stStatut").value});
+  const pr = STATE.projects.find(p=>p.id===id);
+  const ancien = pr ? pr.statut : "";
+  const nouveau = $("#stStatut").value;
+  await updateDoc(doc(db,"projects",id), {statut:nouveau});
+  logActivity(id, "Projet", "Changement de phase", ancien, nouveau);
   closeModal(); toast("Phase mise à jour ✓");
 };
 
 function renderProjectChecklist(pr){
-  const phase = STATE.activePhase || pr.statut || PROJECT_STATUTS[0];
+  const phase = STATE.activePhase || (PHASE_ROUTE_TAB[pr.statut] ? PROJECT_STATUTS.find(s=>!PHASE_ROUTE_TAB[s]) : pr.statut) || PROJECT_STATUTS[0];
+  const mode = PHASE_ITEM_MODE[phase] || "task";
   const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
   const items = phaseChecklists[phase] || [];
   const total = items.length;
-  const done = items.filter(i=>i.statut==="Terminé").length;
+  const done = mode==="document" ? items.filter(i=>i.valide==="Oui").length : items.filter(i=>i.statut==="Terminé").length;
   const pct = total ? Math.round(done/total*100) : 0;
 
   const phasePicker = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;">
-    ${PROJECT_STATUTS.map(s=>`<div onclick="goTo('projects',{projectId:'${pr.id}',projectTab:'checklist',phase:'${s}'})"
-      class="pill ${s===phase?'bad':'neutral'}" style="cursor:pointer;white-space:nowrap;flex-shrink:0;">${s}</div>`).join("")}
+    ${PROJECT_STATUTS.map(s=>{
+      const targetTab = PHASE_ROUTE_TAB[s] || "checklist";
+      const opts = PHASE_ROUTE_TAB[s] ? `{projectId:'${pr.id}',projectTab:'${targetTab}'}` : `{projectId:'${pr.id}',projectTab:'checklist',phase:'${s}'}`;
+      return `<div onclick="goTo('projects',${opts})" class="pill ${s===phase?'bad':'neutral'}" style="cursor:pointer;white-space:nowrap;flex-shrink:0;">${s}${PHASE_ROUTE_TAB[s]?' ↗':''}</div>`;
+    }).join("")}
   </div>`;
 
   const header = `<div class="card">
@@ -690,8 +1126,29 @@ function renderProjectChecklist(pr){
     </div>
   </div>`;
 
-  const list = items.length===0 ? emptyState("projects","Aucun point pour cette phase","") : `<div class="card">
-    ${items.map((it,ii)=>`
+  let list;
+  if(items.length===0){
+    list = emptyState("projects","Aucun point pour cette phase","");
+  } else if(mode==="document"){
+    list = `<div class="card">${items.map((it,ii)=>{
+      const showFollowUp = it.valide !== "Oui"; // tant que non validé : responsable + dates utiles (lenteur administrative)
+      return `<div style="padding:11px 0;border-bottom:1px solid var(--line);">
+        <strong style="font-size:13.5px;">${it.label}</strong>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+          ${docToggle(pr.id, phase, ii, "requis", "Requis", it.requis)}
+          ${docToggle(pr.id, phase, ii, "disponible", "Disponible", it.disponible)}
+          ${docToggle(pr.id, phase, ii, "valide", "Validé", it.valide)}
+          ${docToggle(pr.id, phase, ii, "expire", "Expiré", it.expire, true)}
+        </div>
+        ${showFollowUp ? `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <input placeholder="Responsable du suivi" value="${esc(it.responsable)}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'responsable',this.value)" style="flex:1;min-width:120px;font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          <input type="date" title="Date prévue" value="${it.dateDebut||''}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'dateDebut',this.value)" style="font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          <input type="date" title="Date réelle / relance" value="${it.dateFin||''}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'dateFin',this.value)" style="font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+        </div>` : ""}
+      </div>`;
+    }).join("")}</div>`;
+  } else {
+    list = `<div class="card">${items.map((it,ii)=>`
       <div style="padding:11px 0;border-bottom:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <strong style="font-size:13.5px;">${it.label}</strong>
@@ -709,10 +1166,24 @@ function renderProjectChecklist(pr){
           <span style="font-size:11px;width:32px;color:var(--muted);">${it.avancement||0}%</span>
         </div>
       </div>`).join("")}
-  </div>`;
+    </div>`;
+  }
 
   return phasePicker + header + list;
 }
+function docToggle(projectId, phase, ii, field, label, val, invert){
+  const isYes = val==="Oui";
+  const good = invert ? !isYes : isYes;
+  return `<button class="pill ${good?'ok':'neutral'}" style="border:none;cursor:pointer;" onclick="toggleDocField('${projectId}','${phase}',${ii},'${field}')">${label} : ${val||'Non'}</button>`;
+}
+window.toggleDocField = async function(projectId, phase, ii, field){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists || freshPhaseChecklists()));
+  const cur = phaseChecklists[phase][ii][field];
+  phaseChecklists[phase][ii][field] = cur==="Oui" ? "Non" : "Oui";
+  await updateDoc(doc(db,"projects",projectId), {phaseChecklists});
+  logActivity(projectId, "Checklist", `${phase} — ${phaseChecklists[phase][ii].label} : ${field}`, cur, phaseChecklists[phase][ii][field]);
+};
 window.updatePhaseItem = async function(projectId, phase, ii, field, val){
   const pr = STATE.projects.find(p=>p.id===projectId);
   const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists || freshPhaseChecklists()));
@@ -743,29 +1214,40 @@ function renderProjectFinance(pr){
 
 function renderProjectDocuments(pr){
   const docs = pr.documents || [];
+  const photos = docs.filter(d=>d.type==="Photo" && d.fileUrl);
   return `
     <div class="section-title"><div></div><button class="btn primary sm" onclick="openAddDocModal('${pr.id}')">${icon('plus')} Ajouter un document</button></div>
+    ${photos.length>0 ? `<div class="card">
+      <h3>Photos (${photos.length})</h3>
+      <div class="photo-strip">${photos.map(p=>`<a href="${p.fileUrl}" target="_blank"><img src="${p.fileUrl}" class="photo-thumb" alt="${esc(p.nom)}"></a>`).join("")}</div>
+    </div>` : ""}
     ${docs.length===0 ? emptyState("projects","Aucun document","Ajoutez les documents administratifs, techniques et financiers du projet.") :
-    `<div class="card">${docs.map((d,i)=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px;">
+    `<div class="card">${docs.map((d,i)=>{
+      const expBientot = d.dateExpiration && daysBetween(todayISO(), d.dateExpiration) <= 30 && daysBetween(todayISO(), d.dateExpiration) >= 0;
+      const expire = d.dateExpiration && new Date(d.dateExpiration) < new Date();
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px;">
         <div style="min-width:0;">
           <strong style="font-size:13.5px;">${d.nom}</strong><br>
-          <span style="font-size:11.5px;color:var(--muted)">${d.type} · ajouté le ${d.date}</span>
+          <span style="font-size:11.5px;color:var(--muted)">${d.type} · ajouté le ${d.date}${d.importePar?` par ${d.importePar}`:''}${d.dateExpiration?` · expire le ${d.dateExpiration}`:''}</span>
           ${d.fileUrl?`<br><a class="doc-link" href="${d.fileUrl}" download="${esc(d.fileName||d.nom)}" target="_blank" rel="noopener">📎 ${d.fileName||'Ouvrir le fichier'}</a>`:""}
         </div>
-        <span class="pill ${d.statut==='Validé'?'ok':d.statut==='Expiré'?'bad':'warn'}" style="flex-shrink:0;">${d.statut}</span>
-      </div>`).join("")}</div>`}
+        <span class="pill ${expire?'bad':expBientot?'warn':d.statut==='Validé'?'ok':d.statut==='Expiré'?'bad':'warn'}" style="flex-shrink:0;">${expire?'Expiré':expBientot?'Expire bientôt':d.statut}</span>
+      </div>`;
+    }).join("")}</div>`}
   `;
 }
 window.openAddDocModal = function(projectId){
   openModal(`
     <div class="modal-head"><h3>Ajouter un document</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="f-field" style="margin-bottom:12px;"><label>Nom du document</label><input id="dNom" placeholder="Étude d'impact environnemental"></div>
-    <div class="f-field" style="margin-bottom:12px;"><label>Type</label>
-      <select id="dType"><option>Administratif</option><option>Juridique</option><option>Environnemental</option><option>Technique / Plans</option><option>Devis / Contrat</option><option>Facture</option><option>Photo</option><option>Autre</option></select>
-    </div>
-    <div class="f-field" style="margin-bottom:12px;"><label>Statut</label>
-      <select id="dStatut"><option>En attente</option><option>Validé</option><option>Expiré</option></select>
+    <div class="form-grid" style="margin-bottom:12px;">
+      <div class="f-field"><label>Type</label>
+        <select id="dType"><option>Administratif</option><option>Juridique</option><option>Environnemental</option><option>Technique / Plans</option><option>Devis / Contrat</option><option>Facture</option><option>Photo</option><option>Autre</option></select>
+      </div>
+      <div class="f-field"><label>Statut</label>
+        <select id="dStatut"><option>En attente</option><option>Validé</option><option>Expiré</option></select>
+      </div>
+      <div class="f-field full"><label>Date d'expiration (si applicable)</label><input type="date" id="dExpiration"></div>
     </div>
     <div class="f-field"><label>Fichier — PDF, Word, Excel ou photo (max ~700 Ko)</label><input type="file" id="dFile" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"></div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" id="dSubmitBtn" onclick="submitAddDoc('${projectId}')">Ajouter</button></div>
@@ -798,8 +1280,9 @@ window.submitAddDoc = async function(projectId){
       fileUrl = await fileToBase64(file);
       fileName = file.name;
     }
-    const docs = [...(pr.documents||[]), {nom, type:$("#dType").value, statut:$("#dStatut").value, date:todayISO(), fileUrl, fileName}];
+    const docs = [...(pr.documents||[]), {nom, type:$("#dType").value, statut:$("#dStatut").value, date:todayISO(), dateExpiration:$("#dExpiration").value, fileUrl, fileName, importePar:STATE.profile?STATE.profile.nom:"—"}];
     await updateDoc(doc(db,"projects",projectId), {documents:docs});
+    logActivity(projectId, "Documents", `Document ajouté — ${nom}`, "", $("#dType").value);
     closeModal(); toast("Document ajouté ✓");
   }catch(e){ toast("Erreur : "+e.message, true); btn.disabled=false; btn.textContent="Ajouter"; }
 };
@@ -1015,13 +1498,16 @@ window.submitBC = async function(projectId){
   // Met aussi à jour le montant engagé du projet
   const montantEngage = (Number(pr.montantEngage)||0) + bc.montantTTC;
   await updateDoc(doc(db,"projects",projectId), {bonsCommande, montantEngage});
+  logActivity(projectId, "Achats", `BC créé — ${bc.numero||fournisseur}`, "", `${fmt(bc.montantTTC)} ${bc.devise}`);
   closeModal(); toast("Bon de commande créé ✓");
 };
 window.updateBCStatut = async function(projectId, i, val){
   const pr = STATE.projects.find(p=>p.id===projectId);
   const bonsCommande = JSON.parse(JSON.stringify(pr.bonsCommande));
+  const ancien = bonsCommande[i].statut;
   bonsCommande[i].statut = val;
   await updateDoc(doc(db,"projects",projectId), {bonsCommande});
+  logActivity(projectId, "Achats", `BC ${bonsCommande[i].numero||''} — statut`, ancien, val);
 };
 
 // -- Pro forma --
@@ -1453,23 +1939,55 @@ window.printProjectReport = function(projectId){
   const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
 
   const phasesHtml = PROJECT_STATUTS.map(phase=>{
-    const items = phaseChecklists[phase] || [];
-    const done = items.filter(i=>i.statut==="Terminé").length;
-    const pct = items.length ? Math.round(done/items.length*100) : 0;
-    return `<div class="report-row"><span>${phase}${phase===pr.statut?' (phase actuelle)':''}</span><strong>${done}/${items.length} — ${pct}%</strong></div>`;
+    let done=0, total=0;
+    if(PHASE_ROUTE_TAB[phase]==="achats"){ const bcs=pr.bonsCommande||[]; total=bcs.length; done=bcs.filter(b=>b.statut==="Exécuté").length; }
+    else if(PHASE_ROUTE_TAB[phase]==="travaux"){ const t=pr.travaux||[]; total=t.length; done=t.filter(x=>x.statut==="Terminé").length; }
+    else if(PHASE_ROUTE_TAB[phase]==="equipements"){ const e=pr.equipements||[]; total=e.length; done=e.filter(x=>x.installe>=x.prevu && x.prevu>0).length; }
+    else{ const items=phaseChecklists[phase]||[]; total=items.length; done = (PHASE_ITEM_MODE[phase]==="document") ? items.filter(i=>i.valide==="Oui").length : items.filter(i=>i.statut==="Terminé").length; }
+    const pct = total ? Math.round(done/total*100) : 0;
+    return `<div class="report-row"><span>${phase}${phase===pr.statut?' (phase actuelle)':''}</span><strong>${done}/${total} — ${pct}%</strong></div>`;
   }).join("");
 
   const bcs = pr.bonsCommande || [];
   const bcHtml = bcs.length===0 ? `<p style="font-size:12px;color:#888;">Aucun bon de commande.</p>` :
     bcs.map(b=>`<div class="report-row"><span>${b.numero||'—'} — ${b.fournisseur}</span><strong>${fmt(b.montantTTC)} ${b.devise||'FCFA'} · ${b.statut}</strong></div>`).join("");
 
+  const fournisseursProjet = [...new Set(bcs.map(b=>b.fournisseur).filter(Boolean))];
+  const fournisseursHtml = fournisseursProjet.length===0 ? `<p style="font-size:12px;color:#888;">Aucun fournisseur engagé.</p>` :
+    fournisseursProjet.map(f=>`<div class="report-row"><span>${f}</span><strong>${bcs.filter(b=>b.fournisseur===f).length} BC</strong></div>`).join("");
+
+  const livraisons = pr.livraisons || [];
+  const livraisonsHtml = livraisons.length===0 ? `<p style="font-size:12px;color:#888;">Aucune livraison enregistrée.</p>` :
+    livraisons.map(l=>`<div class="report-row"><span>${l.equipement} — ${l.fournisseur||'—'}</span><strong>${l.qteLivree||0}/${l.qteCommandee||0} · ${l.statut}</strong></div>`).join("");
+
+  const planning = pr.planning || [];
+  const planningHtml = planning.length===0 ? `<p style="font-size:12px;color:#888;">Aucune tâche planifiée.</p>` :
+    planning.map(t=>`<div class="report-row"><span>${t.nom} — ${t.responsable||'—'}</span><strong>${t.dateDebut||'?'} → ${t.dateFin||'?'} · ${t.statut}</strong></div>`).join("");
+
+  const travaux = pr.travaux || [];
+  const travauxHtml = travaux.length===0 ? `<p style="font-size:12px;color:#888;">Checklist chantier non initialisée.</p>` :
+    travaux.map(t=>`<div class="report-row"><span>${t.nom}</span><strong>${t.avancement||0}% · ${t.statut}</strong></div>`).join("");
+
   const risques = pr.risques || [];
   const risquesHtml = risques.length===0 ? `<p style="font-size:12px;color:#888;">Aucun risque signalé.</p>` :
     risques.map(r=>`<div class="report-row"><span>${r.probleme} (${r.categorie||'—'})</span><strong>${r.criticite}</strong></div>`).join("");
 
   const docs = pr.documents || [];
+  const docsManquants = [];
+  Object.entries(phaseChecklists).forEach(([phase, items])=> (items||[]).forEach(it=>{ if(it.valide!==undefined && it.valide!=="Oui" && it.requis==="Oui") docsManquants.push(`${it.label} (${phase})`); }));
   const docsHtml = docs.length===0 ? `<p style="font-size:12px;color:#888;">Aucun document.</p>` :
-    docs.map(d=>`<div class="report-row"><span>${d.nom} (${d.type})</span><strong>${d.statut}</strong></div>`).join("");
+    docs.filter(d=>d.type!=="Photo").map(d=>`<div class="report-row"><span>${d.nom} (${d.type})</span><strong>${d.statut}</strong></div>`).join("");
+  const docsManquantsHtml = docsManquants.length===0 ? `<p style="font-size:12px;color:#2E7D32;">Aucun document manquant.</p>` :
+    `<p style="font-size:12px;color:#B01813;">${docsManquants.join(", ")}</p>`;
+
+  const photos = docs.filter(d=>d.type==="Photo" && d.fileUrl);
+  const photosHtml = photos.length===0 ? "" : `<div class="report-section"><h4>Photos (${photos.length})</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">${photos.map(p=>`<img src="${p.fileUrl}" style="width:110px;height:110px;object-fit:cover;border-radius:6px;border:1px solid #ddd;">`).join("")}</div>
+  </div>`;
+
+  const alertsProjet = computeAlerts().filter(a=>a.text.startsWith(pr.nom));
+  const alertsHtml = alertsProjet.length===0 ? `<p style="font-size:12px;color:#2E7D32;">Aucune alerte active.</p>` :
+    alertsProjet.map(a=>`<div class="report-row"><span>${a.type}</span><strong>${a.text.replace(pr.nom+' — ','')}</strong></div>`).join("");
 
   const now = new Date();
   document.getElementById("printReportArea").innerHTML = `
@@ -1492,10 +2010,9 @@ window.printProjectReport = function(projectId){
       <div class="report-row"><span>Date de fin prévue</span><strong>${pr.dateFinPrevue||'—'}</strong></div>
     </div>
 
-    <div class="report-section">
-      <h4>Avancement par phase</h4>
-      ${phasesHtml}
-    </div>
+    <div class="report-section"><h4>Avancement par phase</h4>${phasesHtml}</div>
+    <div class="report-section"><h4>Planning</h4>${planningHtml}</div>
+    <div class="report-section"><h4>Travaux</h4>${travauxHtml}</div>
 
     <div class="report-section">
       <h4>Finance</h4>
@@ -1505,20 +2022,14 @@ window.printProjectReport = function(projectId){
       <div class="report-row"><span>Solde restant</span><strong>${fmtXAF((pr.montantEngage||0)-(pr.montantPaye||0))}</strong></div>
     </div>
 
-    <div class="report-section">
-      <h4>Bons de commande</h4>
-      ${bcHtml}
-    </div>
-
-    <div class="report-section">
-      <h4>Documents</h4>
-      ${docsHtml}
-    </div>
-
-    <div class="report-section">
-      <h4>Risques & blocages</h4>
-      ${risquesHtml}
-    </div>
+    <div class="report-section"><h4>Fournisseurs</h4>${fournisseursHtml}</div>
+    <div class="report-section"><h4>Bons de commande</h4>${bcHtml}</div>
+    <div class="report-section"><h4>Livraisons</h4>${livraisonsHtml}</div>
+    <div class="report-section"><h4>Documents manquants</h4>${docsManquantsHtml}</div>
+    <div class="report-section"><h4>Documents</h4>${docsHtml}</div>
+    ${photosHtml}
+    <div class="report-section"><h4>Alertes</h4>${alertsHtml}</div>
+    <div class="report-section"><h4>Risques & blocages</h4>${risquesHtml}</div>
 
     <div class="report-footer">${COMPANY.nom} — Document généré automatiquement par l'application de pilotage des projets.</div>
   `;
@@ -1683,6 +2194,13 @@ function subscribeData(){
     if(STATE.route==="parametres") render();
   });
   STATE.unsubscribers.push(unsub3);
+
+  const qLogs = query(collection(db,"activityLogs"), orderBy("createdAt","desc"));
+  const unsub4 = onSnapshot(qLogs, snap=>{
+    STATE.activityLogs = snap.docs.map(d=>({id:d.id, ...d.data()})).slice(0,200);
+    if(STATE.route==="historique") render();
+  }, err=>console.error(err));
+  STATE.unsubscribers.push(unsub4);
 }
 
 // PWA service worker
