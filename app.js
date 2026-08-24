@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-16h20";
+export const BUILD_ID = "2026-08-24-17h20";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -107,31 +107,25 @@ const COMPANY = {
   nui: "NUI: M062416842044H"
 };
 
-const CHECKLIST_TEMPLATE = [
-  {cat:"Terrain & implantation", items:["Titre foncier / bail","Plan cadastral","Plan de situation","Coordonnées GPS","Étude géotechnique","Étude topographique"]},
-  {cat:"Études environnementales", items:["Étude d'impact environnemental","Autorisations environnementales","Plan de gestion environnementale","Documents relatifs aux déchets"]},
-  {cat:"Études techniques", items:["Étude architecturale","Plans électriques","Plans plomberie","Plans incendie","Étude de sécurité"]},
-  {cat:"Achats & équipements", items:["Consultation fournisseurs","Devis reçus","Bons de commande signés","Cuves livrées","Pompes livrées"]},
-  {cat:"Construction", items:["Installation chantier","Terrassement","Fondations / dalle","Tuyauterie & tests d'étanchéité","Électricité & mise à la terre","Auvent / enseigne / totem"]},
-  {cat:"Mise en service", items:["Tests & contrôles","Réception travaux","Autorisation d'exploitation","Ouverture"]}
-];
-
 // -------------------------------------------------------------
 // CHECKLISTS DÉTAILLÉES PAR PHASE — une interface dédiée par étape
 // du projet (Préparation, Études, Autorisations, Conception, Achats,
 // Construction, Installation, Tests, Réception, Mise en service).
-// Contenu basé sur les exigences réelles de construction d'une
-// station-service (études, autorisations réglementaires, gros œuvre,
-// équipements pétroliers) et sur le suivi de chantier fourni.
+// Deux modèles de points selon la phase :
+//  - "document" (Études, Autorisations) : chaque point suit
+//    Document requis / disponible / validé / expiré (Oui/Non)
+//  - "task" (les autres) : responsable, statut, % avancement, dates
 // -------------------------------------------------------------
+const PHASE_ITEM_MODE = { "Études":"document", "Autorisations":"document" };
+
 const PHASE_CHECKLISTS = {
-  "Préparation": ["Identification du terrain","Titre foncier ou bail","Plan cadastral","Plan de situation","Coordonnées GPS","Étude de faisabilité","Accord de principe autorité locale / mairie"],
-  "Études": ["Étude géotechnique","Étude topographique","Étude hydrologique (si nécessaire)","Étude d'impact environnemental","Étude courant fort","Étude courant faible","Étude photovoltaïque","Étude plomberie","Étude climatisation / ventilation","Étude architecturale","Étude de sécurité incendie"],
-  "Autorisations": ["Permis de bâtir","Licence d'exploitation station-service","Autorisation environnementale","Certificat de conformité ICPE (installation classée)","Autorisation du ministère du Commerce","Autorisation transport / stockage d'hydrocarbures","Avis des sapeurs-pompiers","Autorisation de voirie / accès"],
+  "Préparation": ["Identification du terrain","Étude de faisabilité","Accord de principe autorité locale / mairie"],
+  "Études": ["Études environnementales","Étude Courant Fort","Étude Courant Faible","Étude Photovoltaïque","Étude Plomberie","Étude Climatisation / Ventilation","Étude géotechnique","Étude topographique","Étude hydrologique (si nécessaire)"],
+  "Autorisations": ["Titre foncier ou document de propriété","Bail (si applicable)","Certificat d'urbanisme","Permis de bâtir","Plan de masse cadastral","Plan visé par un architecte agréé","Plan de situation","Certificat de propriété","Licence d'exploitation"],
   "Conception": ["Plans architecturaux définitifs","Plans de masse","Plans électriques","Plans plomberie","Plans réseaux, cuves et tuyauteries","Validation Direction","Cahier des charges technique finalisé"],
   "Achats": ["Consultation fournisseurs","Devis reçus","Comparatif des devis","Validation budgétaire","BC cuves hydrocarbures","BC pompes / distributeurs","BC groupe électrogène","BC matériel électrique","BC auvent, enseigne, totem","BC mobilier et équipements boutique"],
-  "Construction": ["Installation chantier","Terrassement","Fouille / excavation","Fondations / dalle","Libération des plateaux des cuves","Enlèvement des cuves","Re-épreuve hydraulique des cuves","Vérification des viroles des cuves","Remblai","Structure & maçonnerie","Tuyauterie hydrocarbures","Tests d'étanchéité","Électricité & mise à la terre","Génie civil","Chambres étanches (cuves / pompes)","Auvent, totem, enseigne","Peinture","Carrelage","Menuiserie bois / aluminium"],
-  "Installation": ["Installation des cuves","Installation des pompes / distributeurs","Installations pétrolières (servicing, distribution, automation, barémage)","Sécurité incendie","Caméras de surveillance","Borne de recharge électrique","Pont élévateur","Aménagement intérieur boutique (gondoles)","Branding complet + canopy îlots"],
+  "Construction": ["Installation chantier","Terrassement","Fouille / excavation","Fondations / dalle","Forage","Clôture du site","Libération des plateaux des cuves","Enlèvement des cuves","Re-épreuve hydraulique des cuves","Vérification des viroles des cuves","Remblai","Structure & maçonnerie","Tuyauterie hydrocarbures","Tests d'étanchéité","Électricité & mise à la terre","Génie civil","Chambres étanches (cuves / pompes)","Auvent, totem, enseigne","Peinture","Carrelage","Menuiserie bois / aluminium"],
+  "Installation": ["Installation des cuves","Installation des pompes / distributeurs","Installations pétrolières (tuyauterie, servicing, distribution, automation, barémage)","Sécurité incendie (extincteurs)","Caméras de surveillance","Borne de recharge électrique","Groupe électrogène","Pont élévateur","Aménagement intérieur boutique (gondoles)","Branding complet + canopy îlots"],
   "Tests": ["Tests d'étanchéité finaux","Tests électriques","Tests des pompes / débit","Tests de sécurité incendie","Contrôle qualité carburant","Essais de mise en pression"],
   "Réception": ["Réception des travaux (PV)","Levée des réserves","Réception des équipements fournisseurs","Contrôle de conformité réglementaire","Inspection finale des autorités"],
   "Mise en service": ["Recrutement du personnel","EPI du personnel","Formation sécurité incendie","Formation manipulation produits pétroliers","Formation communication","Approvisionnement produits pétroliers & lubrifiants","Approvisionnement produits alimentaires / boutique","Autorisation d'exploitation définitive","Ouverture officielle"]
@@ -139,10 +133,18 @@ const PHASE_CHECKLISTS = {
 function freshPhaseChecklists(){
   const out = {};
   PROJECT_STATUTS.forEach(phase=>{
-    out[phase] = (PHASE_CHECKLISTS[phase]||[]).map(label=>({label, responsable:"", statut:"Non commencé", avancement:0, dateDebut:"", dateFin:""}));
+    const mode = PHASE_ITEM_MODE[phase] || "task";
+    out[phase] = (PHASE_CHECKLISTS[phase]||[]).map(label=>
+      mode==="document"
+        ? {label, requis:"Oui", disponible:"Non", valide:"Non", expire:"Non"}
+        : {label, responsable:"", statut:"Non commencé", avancement:0, dateDebut:"", dateFin:""}
+    );
   });
   return out;
 }
+
+// Catalogue standard des équipements d'une station-service (ajout rapide)
+const EQUIPEMENT_CATALOG = ["Cuves hydrocarbures","Tuyauteries hydrocarbures (UPP/KPS/NUPI)","Lot de servicing complet","TAG Reader","Borne de recharge électrique","Tampons de piste","Chambres étanches sous pompes","Chambres étanches pour cuves","Forage","Clôture du site","Électricité (CF / CFB / Photovoltaïque)","Installations pétrolières (tuyauterie/servicing/distrib./autom./barémage)","Auvent & Totem","Groupe électrogène","Branding complet + canopy îlots","Peinture","Carrelage","Plomberie","Caméras de surveillance","Sécurité incendie (extincteurs)","Menuiserie bois","Menuiserie aluminium","Pont élévateur","Aménagement intérieur boutique (gondoles)"];
 
 // -------------------------------------------------------------
 // UTILITAIRES
@@ -437,8 +439,9 @@ function computeAlerts(){
     }
     const engage = Number(pr.montantEngage||0), paye = Number(pr.montantPaye||0);
     if(engage>paye) alerts.push({type:"Paiement", level:"warn", text:`${pr.nom} — solde restant de ${fmt(engage-paye)} FCFA.`});
-    (pr.checklist||[]).forEach(cat=>{
-      cat.items.forEach(it=>{
+    const pcl = pr.phaseChecklists || {};
+    Object.values(pcl).forEach(items=>{
+      (items||[]).forEach(it=>{
         if(it.statut==="Bloqué") alerts.push({type:"Étape bloquée", level:"bad", text:`${pr.nom} — ${it.label}`});
       });
     });
@@ -514,7 +517,6 @@ window.submitNewProject = async function(){
     dateFinPrevue:$("#npDateFin").value, budgetInitial:Number($("#npBudget").value||0),
     budgetRevise:Number($("#npBudget").value||0), montantEngage:0, montantPaye:0,
     adresse:$("#npAdresse").value.trim(),
-    checklist: CHECKLIST_TEMPLATE.map(c=>({cat:c.cat, items:c.items.map(l=>({label:l, statut:"Non commencé"}))})),
     phaseChecklists: freshPhaseChecklists(),
     createdAt: serverTimestamp(), createdBy: STATE.user.uid
   };
@@ -672,10 +674,13 @@ window.submitStatut = async function(id){
 
 function renderProjectChecklist(pr){
   const phase = STATE.activePhase || pr.statut || PROJECT_STATUTS[0];
+  const mode = PHASE_ITEM_MODE[phase] || "task";
   const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
   const items = phaseChecklists[phase] || [];
   const total = items.length;
-  const done = items.filter(i=>i.statut==="Terminé").length;
+  const done = mode==="document"
+    ? items.filter(i=>i.valide==="Oui").length
+    : items.filter(i=>i.statut==="Terminé").length;
   const pct = total ? Math.round(done/total*100) : 0;
 
   const phasePicker = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;">
@@ -696,8 +701,24 @@ function renderProjectChecklist(pr){
     </div>
   </div>`;
 
-  const list = items.length===0 ? emptyState("projects","Aucun point pour cette phase","") : `<div class="card">
-    ${items.map((it,ii)=>`
+  let list;
+  if(items.length===0){
+    list = emptyState("projects","Aucun point pour cette phase","");
+  } else if(mode==="document"){
+    // Modèle documentaire : Document requis / disponible / validé / expiré (Oui/Non)
+    list = `<div class="card">${items.map((it,ii)=>`
+      <div style="padding:11px 0;border-bottom:1px solid var(--line);">
+        <strong style="font-size:13.5px;">${it.label}</strong>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+          ${docToggle(pr.id, phase, ii, "requis", "Requis", it.requis)}
+          ${docToggle(pr.id, phase, ii, "disponible", "Disponible", it.disponible)}
+          ${docToggle(pr.id, phase, ii, "valide", "Validé", it.valide)}
+          ${docToggle(pr.id, phase, ii, "expire", "Expiré", it.expire, true)}
+        </div>
+      </div>`).join("")}</div>`;
+  } else {
+    // Modèle tâche : responsable, statut, % avancement, dates
+    list = `<div class="card">${items.map((it,ii)=>`
       <div style="padding:11px 0;border-bottom:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <strong style="font-size:13.5px;">${it.label}</strong>
@@ -714,25 +735,23 @@ function renderProjectChecklist(pr){
           <input type="range" min="0" max="100" value="${it.avancement||0}" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'avancement',Number(this.value))" style="flex:1;">
           <span style="font-size:11px;width:32px;color:var(--muted);">${it.avancement||0}%</span>
         </div>
-      </div>`).join("")}
-  </div>`;
+      </div>`).join("")}</div>`;
+  }
 
-  const cl = pr.checklist || [];
-  const legacy = cl.length===0 ? "" : `<div class="section-title" style="margin-top:22px;"><h2>Checklist documentaire générale</h2></div>` +
-    cl.map((cat,ci)=>`
-    <div class="card">
-      <h3>${cat.cat}</h3>
-      ${cat.items.map((it,ii)=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">
-          <div style="flex:1;font-size:13.5px;">${it.label}</div>
-          <select onchange="updateChecklistItem('${pr.id}',${ci},${ii},this.value)" style="font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-            ${["Non commencé","En cours","Terminé","Bloqué","Non applicable","En retard"].map(s=>`<option ${s===it.statut?'selected':''}>${s}</option>`).join("")}
-          </select>
-        </div>`).join("")}
-    </div>`).join("");
-
-  return phasePicker + header + list + legacy;
+  return phasePicker + header + list;
 }
+function docToggle(projectId, phase, ii, field, label, val, invert){
+  const isYes = val==="Oui";
+  const good = invert ? !isYes : isYes;
+  return `<button class="pill ${good?'ok':'neutral'}" style="border:none;cursor:pointer;" onclick="toggleDocField('${projectId}','${phase}',${ii},'${field}')">${label} : ${val||'Non'}</button>`;
+}
+window.toggleDocField = async function(projectId, phase, ii, field){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists || freshPhaseChecklists()));
+  const cur = phaseChecklists[phase][ii][field];
+  phaseChecklists[phase][ii][field] = cur==="Oui" ? "Non" : "Oui";
+  await updateDoc(doc(db,"projects",projectId), {phaseChecklists});
+};
 window.updatePhaseItem = async function(projectId, phase, ii, field, val){
   const pr = STATE.projects.find(p=>p.id===projectId);
   const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists || freshPhaseChecklists()));
@@ -741,13 +760,6 @@ window.updatePhaseItem = async function(projectId, phase, ii, field, val){
   if(field==="avancement" && Number(val)>=100) phaseChecklists[phase][ii].statut = "Terminé";
   if(field==="statut" && val==="Terminé") phaseChecklists[phase][ii].avancement = 100;
   await updateDoc(doc(db,"projects",projectId), {phaseChecklists});
-};
-window.updateChecklistItem = async function(projectId, ci, ii, val){
-  const pr = STATE.projects.find(p=>p.id===projectId);
-  const cl = JSON.parse(JSON.stringify(pr.checklist));
-  cl[ci].items[ii].statut = val;
-  await updateDoc(doc(db,"projects",projectId), {checklist:cl});
-  toast("Checklist mise à jour ✓");
 };
 
 function renderProjectFinance(pr){
@@ -1168,9 +1180,15 @@ window.submitGarantie = async function(projectId){
 function renderProjectEquipements(pr){
   const eqs = pr.equipements || [];
   return `
-    <div class="section-title"><div></div><button class="btn primary sm" onclick="openEquipModal('${pr.id}')">${icon('plus')} Ajouter un équipement</button></div>
+    <div class="section-title">
+      <div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn gold sm" onclick="openEquipCatalogModal('${pr.id}')">${icon('plus')} Depuis le catalogue</button>
+        <button class="btn primary sm" onclick="openEquipModal('${pr.id}')">${icon('plus')} Personnalisé</button>
+      </div>
+    </div>
     ${eqs.length===0 ? emptyState("projects","Aucun équipement","Ajoutez les équipements nécessaires : cuves, pompes, groupe électrogène…") :
-    `<div class="card"><table><thead><tr><th>Équipement</th><th>Prévu</th><th>Commandé</th><th>Livré</th><th>Installé</th><th>Statut</th></tr></thead><tbody>
+    `<div class="card"><table><thead><tr><th>Équipement</th><th>Prévu</th><th>Commandé</th><th>Livré</th><th>Installé</th><th>Coût total</th><th>Statut</th><th></th></tr></thead><tbody>
       ${eqs.map((e,i)=>{
         let statut = "À commander";
         if(e.commande>=e.prevu && e.livre===0) statut="Commandé";
@@ -1178,16 +1196,75 @@ function renderProjectEquipements(pr){
         if(e.livre>=e.commande && e.commande>0) statut="Livré";
         if(e.installe>=e.prevu && e.prevu>0) statut="Installé";
         const cls = statut==="Installé"?"ok":statut==="Livraison partielle"?"warn":statut==="À commander"?"neutral":"info";
-        return `<tr><td><strong>${e.nom}</strong><br><span style="font-size:11px;color:var(--muted)">${e.categorie||''}</span></td>
-        <td>${e.prevu}</td><td>${e.commande}</td><td>${e.livre}</td><td>${e.installe}</td>
-        <td><span class="pill ${cls}">${statut}</span></td></tr>`;
+        const coutTotal = (Number(e.coutUnitaire)||0) * (Number(e.prevu)||0);
+        return `<tr><td><strong>${e.nom}</strong><br><span style="font-size:11px;color:var(--muted)">${e.fournisseur||e.categorie||''}${e.datePrevueLivraison?` · prévu ${e.datePrevueLivraison}`:''}</span></td>
+        <td><input type="number" value="${e.prevu}" onchange="updateEquipField('${pr.id}',${i},'prevu',Number(this.value))" style="width:52px;font-size:12px;padding:4px;border-radius:5px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);"></td>
+        <td><input type="number" value="${e.commande}" onchange="updateEquipField('${pr.id}',${i},'commande',Number(this.value))" style="width:52px;font-size:12px;padding:4px;border-radius:5px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);"></td>
+        <td><input type="number" value="${e.livre}" onchange="updateEquipField('${pr.id}',${i},'livre',Number(this.value))" style="width:52px;font-size:12px;padding:4px;border-radius:5px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);"></td>
+        <td><input type="number" value="${e.installe}" onchange="updateEquipField('${pr.id}',${i},'installe',Number(this.value))" style="width:52px;font-size:12px;padding:4px;border-radius:5px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);"></td>
+        <td style="white-space:nowrap;">${fmt(coutTotal)}</td>
+        <td><span class="pill ${cls}">${statut}</span></td>
+        <td><button class="btn icon sm" onclick="openEquipEditModal('${pr.id}',${i})">✎</button></td></tr>`;
       }).join("")}
     </tbody></table></div>`}
   `;
 }
+window.openEquipEditModal = function(projectId, i){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const e = pr.equipements[i];
+  openModal(`
+    <div class="modal-head"><h3>Détails — ${esc(e.nom)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field full"><label>Fournisseur</label><input id="eeFourn" value="${esc(e.fournisseur||'')}"></div>
+      <div class="f-field"><label>Coût unitaire (FCFA)</label><input type="number" id="eeCout" value="${e.coutUnitaire||0}"></div>
+      <div class="f-field"><label>Coût total (auto)</label><input type="text" value="${fmt((Number(e.coutUnitaire)||0)*(Number(e.prevu)||0))}" disabled></div>
+      <div class="f-field"><label>Date prévue de livraison</label><input type="date" id="eeDatePrevue" value="${e.datePrevueLivraison||''}"></div>
+      <div class="f-field"><label>Date réelle de livraison</label><input type="date" id="eeDateReelle" value="${e.dateReelleLivraison||''}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitEquipEdit('${projectId}',${i})">Enregistrer</button></div>
+  `);
+};
+window.submitEquipEdit = async function(projectId, i){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const equipements = JSON.parse(JSON.stringify(pr.equipements));
+  equipements[i].fournisseur = $("#eeFourn").value.trim();
+  equipements[i].coutUnitaire = Number($("#eeCout").value||0);
+  equipements[i].datePrevueLivraison = $("#eeDatePrevue").value;
+  equipements[i].dateReelleLivraison = $("#eeDateReelle").value;
+  await updateDoc(doc(db,"projects",projectId), {equipements});
+  closeModal(); toast("Équipement mis à jour ✓");
+};
+window.openEquipCatalogModal = function(projectId){
+  openModal(`
+    <div class="modal-head"><h3>Ajouter depuis le catalogue</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Sélectionne les équipements à ajouter (quantité prévue = 1 par défaut, modifiable ensuite).</p>
+    <div style="max-height:50vh;overflow-y:auto;">
+      ${EQUIPEMENT_CATALOG.map((e,i)=>`
+        <label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
+          <input type="checkbox" class="eq-cat-check" value="${esc(e)}" style="width:17px;height:17px;">${e}
+        </label>`).join("")}
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitEquipCatalog('${projectId}')">Ajouter la sélection</button></div>
+  `);
+};
+window.submitEquipCatalog = async function(projectId){
+  const checked = $$(".eq-cat-check:checked").map(c=>c.value);
+  if(checked.length===0){ toast("Sélectionne au moins un équipement", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const nouveaux = checked.map(nom=>({nom, categorie:"", fournisseur:"", prevu:1, commande:0, livre:0, installe:0, coutUnitaire:0}));
+  const equipements = [...(pr.equipements||[]), ...nouveaux];
+  await updateDoc(doc(db,"projects",projectId), {equipements});
+  closeModal(); toast(`${checked.length} équipement(s) ajouté(s) ✓`);
+};
+window.updateEquipField = async function(projectId, i, field, val){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const equipements = JSON.parse(JSON.stringify(pr.equipements));
+  equipements[i][field] = val;
+  await updateDoc(doc(db,"projects",projectId), {equipements});
+};
 window.openEquipModal = function(projectId){
   openModal(`
-    <div class="modal-head"><h3>Ajouter un équipement</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><h3>Équipement personnalisé</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="form-grid">
       <div class="f-field full"><label>Nom de l'équipement</label><input id="eqNom" placeholder="Cuves 20m³"></div>
       <div class="f-field"><label>Catégorie</label><input id="eqCat" placeholder="Cuves, pompes, électricité…"></div>
@@ -1197,6 +1274,8 @@ window.openEquipModal = function(projectId){
       <div class="f-field"><label>Livrée</label><input type="number" id="eqLivre" value="0"></div>
       <div class="f-field"><label>Installée</label><input type="number" id="eqInstalle" value="0"></div>
       <div class="f-field"><label>Coût unitaire (FCFA)</label><input type="number" id="eqCout" value="0"></div>
+      <div class="f-field"><label>Date prévue de livraison</label><input type="date" id="eqDatePrevue"></div>
+      <div class="f-field"><label>Date réelle de livraison</label><input type="date" id="eqDateReelle"></div>
     </div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitEquip('${projectId}')">Ajouter</button></div>
   `);
@@ -1209,7 +1288,8 @@ window.submitEquip = async function(projectId){
     nom, categorie:$("#eqCat").value.trim(), fournisseur:$("#eqFourn").value.trim(),
     prevu:Number($("#eqPrevu").value||0), commande:Number($("#eqCommande").value||0),
     livre:Number($("#eqLivre").value||0), installe:Number($("#eqInstalle").value||0),
-    coutUnitaire:Number($("#eqCout").value||0)
+    coutUnitaire:Number($("#eqCout").value||0),
+    datePrevueLivraison:$("#eqDatePrevue").value, dateReelleLivraison:$("#eqDateReelle").value
   }];
   await updateDoc(doc(db,"projects",projectId), {equipements});
   closeModal(); toast("Équipement ajouté ✓");

@@ -1,4 +1,4 @@
-const CACHE = "alcom-pilotage-v4";
+const CACHE = "alcom-pilotage-v5";
 const ASSETS = ["./index.html", "./app.js", "./manifest.json", "./assets/logo.jpeg"];
 
 self.addEventListener("install", e => {
