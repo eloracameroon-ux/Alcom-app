@@ -4,8 +4,8 @@
   "description": "Application de pilotage des projets de construction et mise en service de stations-service",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0D0F14",
-  "theme_color": "#0D0F14",
+  "background_color": "#0B0C10",
+  "theme_color": "#0B0C10",
   "orientation": "portrait-primary",
   "icons": [
     { "src": "assets/logo.jpeg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any" },

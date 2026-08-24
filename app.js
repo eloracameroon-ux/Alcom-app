@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-14h45";
+export const BUILD_ID = "2026-08-24-15h40";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -12,6 +12,8 @@ import {
   initializeFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy, where, serverTimestamp, setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+// Firebase Storage retiré : nécessite le forfait payant Blaze.
+// Les fichiers sont désormais encodés et stockés directement dans Firestore (même approche que l'app du syndicat).
 
 // -------------------------------------------------------------
 // FILET DE SÉCURITÉ — affiche TOUTE erreur à l'écran, sans exception.
@@ -22,10 +24,18 @@ function showFatalError(msg){
   if(!el){
     el = document.createElement("div");
     el.id = "fatalErrorBanner";
-    el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#B01813;color:#fff;padding:14px 16px;font:600 13px/1.4 -apple-system,sans-serif;white-space:pre-wrap;";
+    el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#B01813;color:#fff;padding:calc(14px + env(safe-area-inset-top)) 44px 14px 16px;font:600 13px/1.4 -apple-system,sans-serif;white-space:pre-wrap;";
+    const textSpan = document.createElement("span");
+    textSpan.id = "fatalErrorText";
+    el.appendChild(textSpan);
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "✕";
+    closeBtn.style.cssText = "position:absolute;top:calc(10px + env(safe-area-inset-top));right:10px;background:rgba(255,255,255,.18);border:none;color:#fff;width:26px;height:26px;border-radius:50%;font-size:14px;cursor:pointer;";
+    closeBtn.onclick = () => el.remove();
+    el.appendChild(closeBtn);
     document.body.prepend(el);
   }
-  el.textContent = "⚠️ Erreur : " + msg;
+  document.getElementById("fatalErrorText").textContent = "⚠️ Erreur : " + msg;
   const boot = document.getElementById("boot");
   if(boot) boot.style.display = "none";
 }
@@ -123,7 +133,9 @@ function openModal(html){
   $("#modalBody").innerHTML = html;
   $("#modalOverlay").classList.add("open");
 }
+window.openModal = openModal;
 function closeModal(){ $("#modalOverlay").classList.remove("open"); $("#modalBody").innerHTML=""; }
+window.closeModal = closeModal;
 $("#modalOverlay").addEventListener("click", e => { if(e.target.id==="modalOverlay") closeModal(); });
 
 function icon(name){
@@ -154,12 +166,14 @@ function icon(name){
 const NAV_ITEMS = [
   {id:"dashboard", label:"Tableau de bord", ic:"dashboard"},
   {id:"projects", label:"Projets", ic:"projects"},
+  {id:"recherche", label:"Recherche", ic:"search"},
+  {id:"comparaison", label:"Comparaison", ic:"rapports"},
   {id:"fournisseurs", label:"Fournisseurs", ic:"fournisseurs"},
   {id:"alertes", label:"Alertes", ic:"alertes"},
   {id:"rapports", label:"Rapports", ic:"rapports"},
   {id:"parametres", label:"Paramètres", ic:"parametres"}
 ];
-const BOTTOM_NAV = ["dashboard","projects","fournisseurs","alertes","parametres"];
+const BOTTOM_NAV = ["dashboard","projects","recherche","alertes","parametres"];
 
 function renderNav(){
   const nav = $("#navScroll");
@@ -198,6 +212,8 @@ window.goTo = goTo;
 const TITLES = {
   dashboard: ["Tableau de bord","Vue d'ensemble de tous les projets"],
   projects: ["Projets","Liste des stations en cours et planifiées"],
+  recherche: ["Recherche globale","Projets, fournisseurs, bons de commande, documents"],
+  comparaison: ["Comparaison des projets","Avancement, budget et retards côte à côte"],
   fournisseurs: ["Fournisseurs & prestataires","Base centralisée"],
   alertes: ["Alertes","Retards, échéances et documents manquants"],
   rapports: ["Rapports","Synthèses par projet et par direction"],
@@ -217,11 +233,72 @@ function render(){
   const c = $("#content");
   if(STATE.route==="dashboard") c.innerHTML = renderDashboard();
   else if(STATE.route==="projects") c.innerHTML = STATE.projectId ? renderProjectDetail() : renderProjectsList();
+  else if(STATE.route==="recherche") c.innerHTML = renderRecherche();
+  else if(STATE.route==="comparaison") c.innerHTML = renderComparaison();
   else if(STATE.route==="fournisseurs") c.innerHTML = renderFournisseurs();
   else if(STATE.route==="alertes") c.innerHTML = renderAlertes();
   else if(STATE.route==="rapports") c.innerHTML = renderRapports();
   else if(STATE.route==="parametres") c.innerHTML = renderParametres();
   bindContentEvents();
+}
+
+// -------------------------------------------------------------
+// RECHERCHE GLOBALE
+// -------------------------------------------------------------
+function renderRecherche(){
+  return `
+    <div class="search-box">${icon('search')}<input id="globalSearchInput" placeholder="Rechercher un projet, fournisseur, BC, document…" oninput="doGlobalSearch(this.value)"></div>
+    <div id="searchResults"></div>
+  `;
+}
+window.doGlobalSearch = function(q){
+  const host = $("#searchResults");
+  q = (q||"").trim().toLowerCase();
+  if(q.length<2){ host.innerHTML = `<p style="font-size:13px;color:var(--muted);">Tape au moins 2 caractères…</p>`; return; }
+  const results = [];
+  STATE.projects.forEach(pr=>{
+    if((pr.nom||"").toLowerCase().includes(q) || (pr.code||"").toLowerCase().includes(q) || (pr.ville||"").toLowerCase().includes(q)){
+      results.push({type:"Projet", label:pr.nom, sub:pr.statut, onclick:`goTo('projects',{projectId:'${pr.id}'})`});
+    }
+    (pr.bonsCommande||[]).forEach(b=>{ if((b.numero||"").toLowerCase().includes(q) || (b.fournisseur||"").toLowerCase().includes(q))
+      results.push({type:"Bon de commande", label:b.numero||b.fournisseur, sub:`${pr.nom} · ${fmt(b.montantTTC)} ${b.devise||''}`, onclick:`goTo('projects',{projectId:'${pr.id}',projectTab:'achats'})`}); });
+    (pr.documents||[]).forEach(d=>{ if((d.nom||"").toLowerCase().includes(q))
+      results.push({type:"Document", label:d.nom, sub:pr.nom, onclick:`goTo('projects',{projectId:'${pr.id}',projectTab:'documents'})`}); });
+    (pr.equipements||[]).forEach(e=>{ if((e.nom||"").toLowerCase().includes(q))
+      results.push({type:"Équipement", label:e.nom, sub:pr.nom, onclick:`goTo('projects',{projectId:'${pr.id}',projectTab:'equipements'})`}); });
+  });
+  STATE.suppliers.forEach(s=>{ if((s.nom||"").toLowerCase().includes(q))
+    results.push({type:"Fournisseur", label:s.nom, sub:s.categorie, onclick:`goTo('fournisseurs')`}); });
+
+  host.innerHTML = results.length===0 ? `<p style="font-size:13px;color:var(--muted);">Aucun résultat.</p>` :
+    `<div class="card">${results.map(r=>`
+      <div class="rowlink" onclick="${r.onclick}" style="padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer;">
+        <span class="pill info">${r.type}</span> <strong style="font-size:13.5px;">${r.label}</strong>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${r.sub||''}</div>
+      </div>`).join("")}</div>`;
+};
+
+// -------------------------------------------------------------
+// COMPARAISON ENTRE PROJETS
+// -------------------------------------------------------------
+function renderComparaison(){
+  if(STATE.projects.length===0) return emptyState("projects","Aucun projet à comparer","");
+  return `<div class="card"><table><thead><tr><th>Projet</th><th>Avancement</th><th>Budget</th><th>Engagé</th><th>Payé</th><th>Reste</th><th>Retard</th></tr></thead><tbody>
+    ${STATE.projects.map(pr=>{
+      const idx = PROJECT_STATUTS.indexOf(pr.statut);
+      const avance = Math.round(((idx+1)/PROJECT_STATUTS.length)*100);
+      const late = pr.dateFinPrevue && pr.statut!=="Mise en service" && new Date(pr.dateFinPrevue) < new Date() ? daysBetween(pr.dateFinPrevue, todayISO()) : 0;
+      return `<tr class="rowlink" onclick="goTo('projects',{projectId:'${pr.id}'})">
+        <td><strong>${pr.nom}</strong></td>
+        <td>${avance}%</td>
+        <td>${fmt(pr.budgetInitial)}</td>
+        <td>${fmt(pr.montantEngage)}</td>
+        <td>${fmt(pr.montantPaye)}</td>
+        <td>${fmt((pr.montantEngage||0)-(pr.montantPaye||0))}</td>
+        <td>${late>0?`<span class="pill bad">${late} j.</span>`:`<span class="pill ok">0</span>`}</td>
+      </tr>`;
+    }).join("")}
+  </tbody></table></div>`;
 }
 
 // -------------------------------------------------------------
@@ -269,7 +346,7 @@ function renderDashboard(){
         <div class="section-title"><h3 style="margin:0">Alertes récentes</h3><span class="pill ${alerts.length?'bad':'ok'}">${alerts.length}</span></div>
         ${alerts.length===0 ? `<p style="font-size:13px;color:var(--muted)">Aucune alerte active. 👍</p>` :
           alerts.slice(0,5).map(a=>`
-            <div style="padding:9px 0;border-bottom:1px solid #F0EDE6;font-size:13px;">
+            <div style="padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;">
               <span class="pill ${a.level}">${a.type}</span> ${a.text}
             </div>`).join("")}
         ${alerts.length>5?`<div style="margin-top:10px;"><span class="btn sm ghost" onclick="goTo('alertes')">Voir toutes les alertes (${alerts.length})</span></div>`:""}
@@ -336,7 +413,7 @@ function renderAlertes(){
   const alerts = computeAlerts();
   if(alerts.length===0) return emptyState("alertes","Aucune alerte","Tous les projets sont à jour : aucun retard, aucun document manquant détecté.");
   return `<div class="card">${alerts.map(a=>`
-    <div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid #F0EDE6;align-items:flex-start;">
+    <div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);align-items:flex-start;">
       <span class="pill ${a.level}" style="flex-shrink:0;">${a.type}</span>
       <div style="font-size:13.5px;">${a.text}</div>
     </div>`).join("")}</div>`;
@@ -416,8 +493,14 @@ window.submitNewProject = async function(){
 const PROJECT_TABS = [
   {id:"fiche", label:"Fiche"},
   {id:"checklist", label:"Checklist"},
+  {id:"planning", label:"Planning"},
+  {id:"travaux", label:"Travaux"},
+  {id:"achats", label:"Achats"},
+  {id:"equipements", label:"Équipements"},
+  {id:"livraisons", label:"Livraisons"},
+  {id:"documents", label:"Documents"},
   {id:"finance", label:"Finance"},
-  {id:"documents", label:"Documents"}
+  {id:"risques", label:"Risques"}
 ];
 
 function renderProjectDetail(){
@@ -428,8 +511,14 @@ function renderProjectDetail(){
   let body = "";
   if(STATE.projectTab==="fiche") body = renderProjectFiche(pr, idx);
   else if(STATE.projectTab==="checklist") body = renderProjectChecklist(pr);
+  else if(STATE.projectTab==="planning") body = renderProjectPlanning(pr);
+  else if(STATE.projectTab==="travaux") body = renderProjectTravaux(pr);
+  else if(STATE.projectTab==="achats") body = renderProjectAchats(pr);
+  else if(STATE.projectTab==="equipements") body = renderProjectEquipements(pr);
+  else if(STATE.projectTab==="livraisons") body = renderProjectLivraisons(pr);
   else if(STATE.projectTab==="finance") body = renderProjectFinance(pr);
   else if(STATE.projectTab==="documents") body = renderProjectDocuments(pr);
+  else if(STATE.projectTab==="risques") body = renderProjectRisques(pr);
 
   return `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
@@ -438,9 +527,9 @@ function renderProjectDetail(){
       <span class="mono" style="font-size:12px;color:var(--muted)">${pr.code||''}</span>
     </div>
     <div class="stepper">
-      ${PROJECT_STATUTS.map((s,i)=>`<div class="step ${i<idx?'done':i===idx?'current':''}">${s}</div>`).join("")}
+      ${PROJECT_STATUTS.map((s,i)=>`<div class="step ${i<idx?'done':i===idx?'current':''}" onclick="jumpToPhase('${pr.id}','${s}')" style="cursor:pointer;">${s}</div>`).join("")}
     </div>
-    <div style="display:flex;gap:6px;margin:16px 0;border-bottom:1px solid #E7E4DC;overflow-x:auto;">
+    <div style="display:flex;gap:6px;margin:16px 0;border-bottom:1px solid var(--line);overflow-x:auto;">
       ${PROJECT_TABS.map(t=>`<div onclick="goTo('projects',{projectId:'${pr.id}',projectTab:'${t.id}'})"
         style="padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;
         border-bottom:2px solid ${STATE.projectTab===t.id?'var(--red)':'transparent'};
@@ -483,7 +572,7 @@ function renderProjectFiche(pr, idx){
 }
 
 function infoRow(label,val){
-  return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F5F2EB;font-size:13.5px;">
+  return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
     <span style="color:var(--muted)">${label}</span><span style="font-weight:600;text-align:right;">${val}</span></div>`;
 }
 
@@ -520,6 +609,11 @@ window.submitEditProject = async function(id){
   }catch(e){ toast("Erreur : "+e.message, true); }
 };
 
+window.jumpToPhase = async function(projectId, statut){
+  await updateDoc(doc(db,"projects",projectId), {statut});
+  toast("Phase : " + statut + " ✓");
+};
+
 window.openStatutModal = function(id){
   const pr = STATE.projects.find(p=>p.id===id);
   openModal(`
@@ -545,9 +639,9 @@ function renderProjectChecklist(pr){
     <div class="card">
       <h3>${cat.cat}</h3>
       ${cat.items.map((it,ii)=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #F5F2EB;">
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">
           <div style="flex:1;font-size:13.5px;">${it.label}</div>
-          <select onchange="updateChecklistItem('${pr.id}',${ci},${ii},this.value)" style="font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid #E2DFD6;background:#FBFAF7;">
+          <select onchange="updateChecklistItem('${pr.id}',${ci},${ii},this.value)" style="font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
             ${["Non commencé","En cours","Terminé","Bloqué","Non applicable","En retard"].map(s=>`<option ${s===it.statut?'selected':''}>${s}</option>`).join("")}
           </select>
         </div>`).join("")}
@@ -585,9 +679,13 @@ function renderProjectDocuments(pr){
     <div class="section-title"><div></div><button class="btn primary sm" onclick="openAddDocModal('${pr.id}')">${icon('plus')} Ajouter un document</button></div>
     ${docs.length===0 ? emptyState("projects","Aucun document","Ajoutez les documents administratifs, techniques et financiers du projet.") :
     `<div class="card">${docs.map((d,i)=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F5F2EB;">
-        <div><strong style="font-size:13.5px;">${d.nom}</strong><br><span style="font-size:11.5px;color:var(--muted)">${d.type} · ajouté le ${d.date}</span></div>
-        <span class="pill ${d.statut==='Validé'?'ok':d.statut==='Expiré'?'bad':'warn'}">${d.statut}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px;">
+        <div style="min-width:0;">
+          <strong style="font-size:13.5px;">${d.nom}</strong><br>
+          <span style="font-size:11.5px;color:var(--muted)">${d.type} · ajouté le ${d.date}</span>
+          ${d.fileUrl?`<br><a class="doc-link" href="${d.fileUrl}" download="${esc(d.fileName||d.nom)}" target="_blank" rel="noopener">📎 ${d.fileName||'Ouvrir le fichier'}</a>`:""}
+        </div>
+        <span class="pill ${d.statut==='Validé'?'ok':d.statut==='Expiré'?'bad':'warn'}" style="flex-shrink:0;">${d.statut}</span>
       </div>`).join("")}</div>`}
   `;
 }
@@ -596,19 +694,361 @@ window.openAddDocModal = function(projectId){
     <div class="modal-head"><h3>Ajouter un document</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="f-field" style="margin-bottom:12px;"><label>Nom du document</label><input id="dNom" placeholder="Étude d'impact environnemental"></div>
     <div class="f-field" style="margin-bottom:12px;"><label>Type</label>
-      <select id="dType"><option>Administratif</option><option>Juridique</option><option>Environnemental</option><option>Technique / Plans</option><option>Devis / Contrat</option><option>Facture</option><option>Autre</option></select>
+      <select id="dType"><option>Administratif</option><option>Juridique</option><option>Environnemental</option><option>Technique / Plans</option><option>Devis / Contrat</option><option>Facture</option><option>Photo</option><option>Autre</option></select>
     </div>
-    <div class="f-field"><label>Statut</label>
+    <div class="f-field" style="margin-bottom:12px;"><label>Statut</label>
       <select id="dStatut"><option>En attente</option><option>Validé</option><option>Expiré</option></select>
     </div>
-    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitAddDoc('${projectId}')">Ajouter</button></div>
+    <div class="f-field"><label>Fichier — PDF, Word, Excel ou photo (max ~700 Ko)</label><input type="file" id="dFile" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"></div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" id="dSubmitBtn" onclick="submitAddDoc('${projectId}')">Ajouter</button></div>
   `);
 };
+// Convertit un fichier en base64 pour le stocker directement dans Firestore
+// (pas besoin de Firebase Storage / forfait Blaze — même principe que l'app du syndicat).
+function fileToBase64(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 window.submitAddDoc = async function(projectId){
   const pr = STATE.projects.find(p=>p.id===projectId);
-  const docs = [...(pr.documents||[]), {nom:$("#dNom").value.trim(), type:$("#dType").value, statut:$("#dStatut").value, date:todayISO()}];
-  await updateDoc(doc(db,"projects",projectId), {documents:docs});
-  closeModal(); toast("Document ajouté ✓");
+  const nom = $("#dNom").value.trim();
+  if(!nom){ toast("Le nom du document est requis", true); return; }
+  const btn = $("#dSubmitBtn"); btn.disabled = true; btn.textContent = "Ajout…";
+  try{
+    const file = $("#dFile").files[0];
+    let fileUrl = null, fileName = null;
+    if(file){
+      if(file.size > 720000){
+        toast("Fichier trop volumineux (max ~700 Ko). Compresse-le ou réduis la qualité de la photo.", true);
+        btn.disabled=false; btn.textContent="Ajouter"; return;
+      }
+      btn.textContent = "Encodage du fichier…";
+      fileUrl = await fileToBase64(file);
+      fileName = file.name;
+    }
+    const docs = [...(pr.documents||[]), {nom, type:$("#dType").value, statut:$("#dStatut").value, date:todayISO(), fileUrl, fileName}];
+    await updateDoc(doc(db,"projects",projectId), {documents:docs});
+    closeModal(); toast("Document ajouté ✓");
+  }catch(e){ toast("Erreur : "+e.message, true); btn.disabled=false; btn.textContent="Ajouter"; }
+};
+
+// -------------------------------------------------------------
+// PLANNING (calendrier des tâches)
+// -------------------------------------------------------------
+function renderProjectPlanning(pr){
+  const tasks = (pr.planning||[]).slice().sort((a,b)=>(a.dateDebut||"").localeCompare(b.dateDebut||""));
+  return `
+    <div class="section-title"><div></div><button class="btn primary sm" onclick="openPlanningModal('${pr.id}')">${icon('plus')} Nouvelle tâche</button></div>
+    ${tasks.length===0 ? emptyState("projects","Aucune tâche planifiée","Ajoutez les tâches du planning avec leurs échéances.") :
+    `<div class="card">${tasks.map((t,i)=>{
+      const late = t.statut!=="Terminé" && t.dateFin && new Date(t.dateFin) < new Date();
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <strong style="font-size:13.5px;">${t.nom}</strong>
+          <span class="pill ${late?'bad':t.statut==='Terminé'?'ok':'neutral'}">${late?'En retard':t.statut}</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${t.responsable||'—'} · ${t.dateDebut||'?'} → ${t.dateFin||'?'}</div>
+      </div>`;
+    }).join("")}</div>`}
+  `;
+}
+window.openPlanningModal = function(projectId){
+  openModal(`
+    <div class="modal-head"><h3>Nouvelle tâche</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field" style="margin-bottom:12px;"><label>Nom de la tâche</label><input id="tkNom" placeholder="Terrassement"></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Responsable</label><input id="tkResp"></div>
+      <div class="f-field"><label>Statut</label><select id="tkStatut"><option>À venir</option><option>En cours</option><option>Terminé</option></select></div>
+      <div class="f-field"><label>Date début</label><input type="date" id="tkDebut"></div>
+      <div class="f-field"><label>Date fin</label><input type="date" id="tkFin"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitPlanning('${projectId}')">Ajouter</button></div>
+  `);
+};
+window.submitPlanning = async function(projectId){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const nom = $("#tkNom").value.trim();
+  if(!nom){ toast("Le nom de la tâche est requis", true); return; }
+  const planning = [...(pr.planning||[]), {nom, responsable:$("#tkResp").value.trim(), statut:$("#tkStatut").value, dateDebut:$("#tkDebut").value, dateFin:$("#tkFin").value}];
+  await updateDoc(doc(db,"projects",projectId), {planning});
+  closeModal(); toast("Tâche ajoutée ✓");
+};
+
+// -------------------------------------------------------------
+// TRAVAUX (checklist de construction avec % avancement)
+// -------------------------------------------------------------
+const TRAVAUX_TEMPLATE = ["Installation chantier","Terrassement","Fondations / dalle","Structure & maçonnerie","Cuves & tuyauterie","Tests d'étanchéité","Électricité & mise à la terre","Sécurité incendie","Auvent / enseigne / totem","Aménagement extérieur & voirie"];
+function renderProjectTravaux(pr){
+  const travaux = pr.travaux && pr.travaux.length ? pr.travaux : null;
+  if(!travaux){
+    return `<div class="card"><p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Initialisez la checklist de construction standard pour ce projet.</p>
+      <button class="btn primary sm" onclick="initTravaux('${pr.id}')">Initialiser la checklist chantier</button></div>`;
+  }
+  const avgAvance = Math.round(travaux.reduce((s,t)=>s+(Number(t.avancement)||0),0)/travaux.length);
+  return `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h3 style="margin:0;">Avancement global des travaux</h3><strong>${avgAvance}%</strong>
+      </div>
+      <div class="progress-track" style="height:10px;"><div class="progress-fill" style="width:${avgAvance}%"></div></div>
+    </div>
+    <div class="card">${travaux.map((t,i)=>`
+      <div style="padding:10px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <strong style="font-size:13.5px;">${t.nom}</strong>
+          <select onchange="updateTravauxStatut('${pr.id}',${i},this.value)" style="font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+            ${["Non commencé","En cours","Terminé","Bloqué"].map(s=>`<option ${s===t.statut?'selected':''}>${s}</option>`).join("")}
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+          <input type="range" min="0" max="100" value="${t.avancement||0}" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updateTravauxAvancement('${pr.id}',${i},this.value)" style="flex:1;">
+          <span style="font-size:11.5px;width:34px;color:var(--muted);">${t.avancement||0}%</span>
+        </div>
+      </div>`).join("")}</div>
+  `;
+}
+window.initTravaux = async function(projectId){
+  const travaux = TRAVAUX_TEMPLATE.map(nom=>({nom, statut:"Non commencé", avancement:0}));
+  await updateDoc(doc(db,"projects",projectId), {travaux});
+  toast("Checklist chantier initialisée ✓");
+};
+window.updateTravauxStatut = async function(projectId, i, val){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const travaux = JSON.parse(JSON.stringify(pr.travaux));
+  travaux[i].statut = val;
+  if(val==="Terminé") travaux[i].avancement = 100;
+  await updateDoc(doc(db,"projects",projectId), {travaux});
+};
+window.updateTravauxAvancement = async function(projectId, i, val){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const travaux = JSON.parse(JSON.stringify(pr.travaux));
+  travaux[i].avancement = Number(val);
+  if(Number(val)>=100) travaux[i].statut = "Terminé";
+  await updateDoc(doc(db,"projects",projectId), {travaux});
+};
+
+// -------------------------------------------------------------
+// ACHATS / BONS DE COMMANDE
+// -------------------------------------------------------------
+const BC_STATUTS = ["Brouillon","En validation","Validé","Envoyé au fournisseur","Signé","Partiellement exécuté","Exécuté","Annulé"];
+function renderProjectAchats(pr){
+  const bcs = pr.bonsCommande || [];
+  return `
+    <div class="section-title"><div></div><button class="btn primary sm" onclick="openBCModal('${pr.id}')">${icon('plus')} Nouveau bon de commande</button></div>
+    ${bcs.length===0 ? emptyState("projects","Aucun bon de commande","Créez le premier bon de commande de ce projet.") :
+    `<div class="card">${renderBCTable(bcs, pr.id)}</div>`}
+  `;
+}
+function renderBCTable(bcs, projectId){
+  return `<table><thead><tr><th>N°</th><th>Fournisseur</th><th>Montant TTC</th><th>Statut</th></tr></thead><tbody>
+    ${bcs.map((b,i)=>`<tr>
+      <td class="mono">${b.numero||'—'}</td>
+      <td>${b.fournisseur}</td>
+      <td>${fmt(b.montantTTC)} ${b.devise||'FCFA'}</td>
+      <td>
+        <select onchange="updateBCStatut('${projectId}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          ${BC_STATUTS.map(s=>`<option ${s===b.statut?'selected':''}>${s}</option>`).join("")}
+        </select>
+      </td>
+    </tr>`).join("")}
+  </tbody></table>`;
+}
+window.openBCModal = function(projectId){
+  const fournisseurOptions = STATE.suppliers.map(s=>`<option>${esc(s.nom)}</option>`).join("");
+  openModal(`
+    <div class="modal-head"><h3>Nouveau bon de commande</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Numéro BC</label><input id="bcNum" placeholder="BC-2026-001"></div>
+      <div class="f-field"><label>Fournisseur</label><input id="bcFourn" list="bcFournList" placeholder="Nom du fournisseur"><datalist id="bcFournList">${fournisseurOptions}</datalist></div>
+      <div class="f-field"><label>Montant HT</label><input type="number" id="bcHT" value="0"></div>
+      <div class="f-field"><label>Montant TTC</label><input type="number" id="bcTTC" value="0"></div>
+      <div class="f-field"><label>Devise</label><input id="bcDevise" value="FCFA"></div>
+      <div class="f-field"><label>Délai de livraison</label><input id="bcDelai" placeholder="30 jours"></div>
+      <div class="f-field"><label>Date prévue</label><input type="date" id="bcDate"></div>
+      <div class="f-field"><label>Statut</label><select id="bcStatut">${BC_STATUTS.map(s=>`<option>${s}</option>`).join("")}</select></div>
+      <div class="f-field full"><label>Articles</label><textarea id="bcArticles" placeholder="Détail des articles, quantités"></textarea></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitBC('${projectId}')">Créer</button></div>
+  `);
+};
+window.submitBC = async function(projectId){
+  const fournisseur = $("#bcFourn").value.trim();
+  if(!fournisseur){ toast("Le fournisseur est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const bc = {
+    numero:$("#bcNum").value.trim(), fournisseur, montantHT:Number($("#bcHT").value||0),
+    montantTTC:Number($("#bcTTC").value||0), devise:$("#bcDevise").value.trim()||"FCFA",
+    delaiLivraison:$("#bcDelai").value.trim(), datePrevue:$("#bcDate").value,
+    statut:$("#bcStatut").value, articles:$("#bcArticles").value.trim(), createdAt:todayISO()
+  };
+  const bonsCommande = [...(pr.bonsCommande||[]), bc];
+  // Met aussi à jour le montant engagé du projet
+  const montantEngage = (Number(pr.montantEngage)||0) + bc.montantTTC;
+  await updateDoc(doc(db,"projects",projectId), {bonsCommande, montantEngage});
+  closeModal(); toast("Bon de commande créé ✓");
+};
+window.updateBCStatut = async function(projectId, i, val){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const bonsCommande = JSON.parse(JSON.stringify(pr.bonsCommande));
+  bonsCommande[i].statut = val;
+  await updateDoc(doc(db,"projects",projectId), {bonsCommande});
+};
+
+// -------------------------------------------------------------
+// ÉQUIPEMENTS
+// -------------------------------------------------------------
+function renderProjectEquipements(pr){
+  const eqs = pr.equipements || [];
+  return `
+    <div class="section-title"><div></div><button class="btn primary sm" onclick="openEquipModal('${pr.id}')">${icon('plus')} Ajouter un équipement</button></div>
+    ${eqs.length===0 ? emptyState("projects","Aucun équipement","Ajoutez les équipements nécessaires : cuves, pompes, groupe électrogène…") :
+    `<div class="card"><table><thead><tr><th>Équipement</th><th>Prévu</th><th>Commandé</th><th>Livré</th><th>Installé</th><th>Statut</th></tr></thead><tbody>
+      ${eqs.map((e,i)=>{
+        let statut = "À commander";
+        if(e.commande>=e.prevu && e.livre===0) statut="Commandé";
+        if(e.livre>0 && e.livre<e.commande) statut="Livraison partielle";
+        if(e.livre>=e.commande && e.commande>0) statut="Livré";
+        if(e.installe>=e.prevu && e.prevu>0) statut="Installé";
+        const cls = statut==="Installé"?"ok":statut==="Livraison partielle"?"warn":statut==="À commander"?"neutral":"info";
+        return `<tr><td><strong>${e.nom}</strong><br><span style="font-size:11px;color:var(--muted)">${e.categorie||''}</span></td>
+        <td>${e.prevu}</td><td>${e.commande}</td><td>${e.livre}</td><td>${e.installe}</td>
+        <td><span class="pill ${cls}">${statut}</span></td></tr>`;
+      }).join("")}
+    </tbody></table></div>`}
+  `;
+}
+window.openEquipModal = function(projectId){
+  openModal(`
+    <div class="modal-head"><h3>Ajouter un équipement</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field full"><label>Nom de l'équipement</label><input id="eqNom" placeholder="Cuves 20m³"></div>
+      <div class="f-field"><label>Catégorie</label><input id="eqCat" placeholder="Cuves, pompes, électricité…"></div>
+      <div class="f-field"><label>Fournisseur</label><input id="eqFourn"></div>
+      <div class="f-field"><label>Quantité prévue</label><input type="number" id="eqPrevu" value="1"></div>
+      <div class="f-field"><label>Commandée</label><input type="number" id="eqCommande" value="0"></div>
+      <div class="f-field"><label>Livrée</label><input type="number" id="eqLivre" value="0"></div>
+      <div class="f-field"><label>Installée</label><input type="number" id="eqInstalle" value="0"></div>
+      <div class="f-field"><label>Coût unitaire (FCFA)</label><input type="number" id="eqCout" value="0"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitEquip('${projectId}')">Ajouter</button></div>
+  `);
+};
+window.submitEquip = async function(projectId){
+  const nom = $("#eqNom").value.trim();
+  if(!nom){ toast("Le nom de l'équipement est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const equipements = [...(pr.equipements||[]), {
+    nom, categorie:$("#eqCat").value.trim(), fournisseur:$("#eqFourn").value.trim(),
+    prevu:Number($("#eqPrevu").value||0), commande:Number($("#eqCommande").value||0),
+    livre:Number($("#eqLivre").value||0), installe:Number($("#eqInstalle").value||0),
+    coutUnitaire:Number($("#eqCout").value||0)
+  }];
+  await updateDoc(doc(db,"projects",projectId), {equipements});
+  closeModal(); toast("Équipement ajouté ✓");
+};
+
+// -------------------------------------------------------------
+// LIVRAISONS
+// -------------------------------------------------------------
+const LIVRAISON_STATUTS = ["À venir","En transit","Livré","Livraison partielle","Retard","Annulé"];
+function renderProjectLivraisons(pr){
+  const livs = pr.livraisons || [];
+  return `
+    <div class="section-title"><div></div><button class="btn primary sm" onclick="openLivraisonModal('${pr.id}')">${icon('plus')} Nouvelle livraison</button></div>
+    ${livs.length===0 ? emptyState("projects","Aucune livraison enregistrée","Suivez ici les livraisons attendues et reçues.") :
+    `<div class="card">${livs.map((l,i)=>`
+      <div style="padding:10px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <strong style="font-size:13.5px;">${l.equipement}</strong>
+          <select onchange="updateLivraisonStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+            ${LIVRAISON_STATUTS.map(s=>`<option ${s===l.statut?'selected':''}>${s}</option>`).join("")}
+          </select>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${l.fournisseur||'—'} · Qté ${l.qteLivree||0}/${l.qteCommandee||0} · prévu ${l.datePrevue||'?'}</div>
+      </div>`).join("")}</div>`}
+  `;
+}
+window.openLivraisonModal = function(projectId){
+  openModal(`
+    <div class="modal-head"><h3>Nouvelle livraison</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field full"><label>Équipement / article</label><input id="lvEquip" placeholder="Pompes distributrices"></div>
+      <div class="f-field"><label>Fournisseur</label><input id="lvFourn"></div>
+      <div class="f-field"><label>N° BL</label><input id="lvBL"></div>
+      <div class="f-field"><label>Quantité commandée</label><input type="number" id="lvQteCmd" value="0"></div>
+      <div class="f-field"><label>Quantité livrée</label><input type="number" id="lvQteLiv" value="0"></div>
+      <div class="f-field"><label>Date prévue</label><input type="date" id="lvDatePrevue"></div>
+      <div class="f-field"><label>Statut</label><select id="lvStatut">${LIVRAISON_STATUTS.map(s=>`<option>${s}</option>`).join("")}</select></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitLivraison('${projectId}')">Ajouter</button></div>
+  `);
+};
+window.submitLivraison = async function(projectId){
+  const equipement = $("#lvEquip").value.trim();
+  if(!equipement){ toast("L'équipement est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const livraisons = [...(pr.livraisons||[]), {
+    equipement, fournisseur:$("#lvFourn").value.trim(), numeroBL:$("#lvBL").value.trim(),
+    qteCommandee:Number($("#lvQteCmd").value||0), qteLivree:Number($("#lvQteLiv").value||0),
+    datePrevue:$("#lvDatePrevue").value, statut:$("#lvStatut").value
+  }];
+  await updateDoc(doc(db,"projects",projectId), {livraisons});
+  closeModal(); toast("Livraison ajoutée ✓");
+};
+window.updateLivraisonStatut = async function(projectId, i, val){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const livraisons = JSON.parse(JSON.stringify(pr.livraisons));
+  livraisons[i].statut = val;
+  await updateDoc(doc(db,"projects",projectId), {livraisons});
+};
+
+// -------------------------------------------------------------
+// RISQUES & BLOCAGES
+// -------------------------------------------------------------
+function renderProjectRisques(pr){
+  const risques = pr.risques || [];
+  return `
+    <div class="section-title"><div></div><button class="btn primary sm" onclick="openRisqueModal('${pr.id}')">${icon('plus')} Signaler un risque</button></div>
+    ${risques.length===0 ? emptyState("projects","Aucun risque signalé","Enregistrez ici les blocages et problèmes rencontrés.") :
+    `<div class="card">${risques.map((r,i)=>`
+      <div style="padding:10px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <strong style="font-size:13.5px;">${r.probleme}</strong>
+          <span class="pill ${r.criticite==='Élevée'?'bad':r.criticite==='Moyenne'?'warn':'neutral'}">${r.criticite}</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${r.categorie||''} · Responsable : ${r.responsable||'—'} · Échéance : ${r.dateLimite||'—'}</div>
+        ${r.description?`<div style="font-size:12.5px;margin-top:5px;">${r.description}</div>`:""}
+      </div>`).join("")}</div>`}
+  `;
+}
+window.openRisqueModal = function(projectId){
+  openModal(`
+    <div class="modal-head"><h3>Signaler un risque</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field" style="margin-bottom:12px;"><label>Problème</label><input id="rkProbleme" placeholder="Autorisation environnementale non obtenue"></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Catégorie</label><input id="rkCat" placeholder="Administratif, technique…"></div>
+      <div class="f-field"><label>Criticité</label><select id="rkCrit"><option>Faible</option><option>Moyenne</option><option>Élevée</option></select></div>
+      <div class="f-field"><label>Responsable</label><input id="rkResp"></div>
+      <div class="f-field"><label>Date limite</label><input type="date" id="rkDate"></div>
+      <div class="f-field full"><label>Description / action corrective</label><textarea id="rkDesc"></textarea></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitRisque('${projectId}')">Enregistrer</button></div>
+  `);
+};
+window.submitRisque = async function(projectId){
+  const probleme = $("#rkProbleme").value.trim();
+  if(!probleme){ toast("Le problème est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const risques = [...(pr.risques||[]), {
+    probleme, categorie:$("#rkCat").value.trim(), criticite:$("#rkCrit").value,
+    responsable:$("#rkResp").value.trim(), dateLimite:$("#rkDate").value, description:$("#rkDesc").value.trim(), statut:"Ouvert"
+  }];
+  await updateDoc(doc(db,"projects",projectId), {risques});
+  closeModal(); toast("Risque enregistré ✓");
 };
 
 function esc(s){ return (s||"").replace(/"/g,'&quot;'); }
@@ -675,7 +1115,7 @@ function renderRapports(){
 // -------------------------------------------------------------
 let allUsers = [];
 function renderParametres(){
-  const isAdmin = STATE.profile?.role === "admin";
+  const isAdmin = ["admin","direction","daf"].includes(STATE.profile?.role);
   return `
     <div class="card">
       <h3>Mon profil</h3>

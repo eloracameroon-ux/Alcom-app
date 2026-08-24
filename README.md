@@ -20,10 +20,13 @@ service cloud.firestore {
   }
 }
 ```
-(Règle simple pour démarrer : tout utilisateur connecté peut lire/écrire. On affinera par rôle plus tard si besoin.)
+(Règle simple pour démarrer : tout utilisateur connecté peut lire/écrire — Direction, DAF et toutes les équipes voient l'ensemble des projets et de leurs détails.)
+
+### Documents et photos
+Les fichiers joints (PDF, Word, Excel, photos) sont stockés **directement dans Firestore**, pas besoin de Firebase Storage ni du forfait payant Blaze. Limite : ~700 Ko par fichier — largement suffisant pour la plupart des documents et des photos compressées.
 
 ### Premier compte administrateur
-Le tout premier compte qui se connecte (via "Se connecter" avec un e-mail/mot de passe que tu auras créé dans Firebase Console → Authentication → Users → Add user) devient automatiquement **Administrateur**. Crée ce premier compte dans la console Firebase, puis connecte-toi avec dans l'appli — les comptes suivants pourront être créés directement depuis Paramètres.
+Le tout premier compte qui se connecte devient automatiquement **Administrateur**. Crée-le dans Firebase Console → Authentication → Users → Add user, puis connecte-toi avec dans l'appli.
 
 ## 2. Déployer sur GitHub + Vercel
 
@@ -34,26 +37,31 @@ Le tout premier compte qui se connecte (via "Se connecter" avec un e-mail/mot de
 ## 3. Installer le logo sur l'écran d'accueil / bureau
 Une fois déployée, ouvre le lien sur mobile → menu du navigateur → **Ajouter à l'écran d'accueil**. Le logo Alcom Petroleum s'affiche comme icône (grâce à `manifest.json`).
 
-## 4. Ce qui est livré (Phase 1 — Fondations)
-- Connexion sécurisée (Firebase Auth) avec logo sur l'écran de login
+## 4. Ce qui est livré
+- Connexion sécurisée (Firebase Auth), thème sombre aux couleurs Alcom Petroleum (rouge/or)
+- Accès complet pour Administrateur, Direction et DAF/Finance (vue sur l'ensemble des projets)
 - Tableau de bord : KPIs globaux, projets par phase, alertes automatiques
-- Gestion des projets : création, fiche complète, progression visuelle (10 étapes), changement de phase
-- Checklist configurable par projet (terrain, environnement, techniques, achats, construction, mise en service)
-- Suivi financier par projet (budget, engagé, payé, solde, écart)
-- Documents par projet (liste + statut)
+- Projets : fiche complète, progression en 10 étapes cliquable (navigation libre entre phases, sans ordre imposé)
+- Checklist configurable par projet
+- **Planning** : tâches avec dates et responsables
+- **Travaux** : checklist de construction avec % d'avancement par tâche
+- **Achats / Bons de commande** : création, statuts, montants HT/TTC, mise à jour automatique du montant engagé
+- **Équipements** : quantités prévu/commandé/livré/installé par équipement
+- **Livraisons** : suivi par équipement, BL, statuts (à venir, en transit, livré, partiel, retard)
+- **Documents** : import réel de fichiers PDF, Word, Excel et photos (stockés sur Firebase Storage)
+- **Risques & blocages** : criticité, responsable, échéance
+- Finance par projet (budget, engagé, payé, solde, écart)
+- **Recherche globale** : projets, BC, documents, équipements, fournisseurs
+- **Comparaison entre projets** : tableau avancement/budget/retard côte à côte
 - Fournisseurs (base centralisée par catégorie)
-- Alertes automatiques (retards, échéances proches, soldes impayés, étapes bloquées)
-- Utilisateurs & rôles (Administrateur, Direction, DAF, Responsable projet, Achats, Responsable travaux, Consultation)
-- PWA installable avec logo Alcom Petroleum
+- Alertes automatiques
+- Utilisateurs & rôles
+- PWA installable
 
-## 5. Prochaines étapes (à construire module par module)
-- Bons de commande détaillés + processus achats complet (devis → BC → signature → livraison)
-- Suivi des livraisons (statuts, BL, retards automatiques)
-- Gestion détaillée des équipements (cuves, pompes… quantités prévu/commandé/livré/installé)
-- Suivi de construction (checklist chantier avec % avancement, photos)
-- Planning (vue calendrier + Gantt)
-- Comparaison entre projets, filtres avancés
-- Recherche globale
-- Rapports PDF/Excel réels (au-delà de l'impression navigateur actuelle)
-- Import Excel/CSV
+## 5. Prochaines étapes possibles
+- Vue Gantt visuelle pour le planning (au-delà de la liste actuelle)
+- Photos multiples par tâche de travaux/livraison (actuellement : documents projet uniquement)
+- Rapports PDF/Excel exportés en un clic (au-delà de l'impression navigateur)
+- Import Excel/CSV en masse
 - Assistant documentaire IA (Phase 2, comme prévu au cahier des charges)
+- OCR automatique sur les documents importés
