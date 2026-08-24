@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Alcom Petroleum — Pilotage Projets</title>
+<meta name="theme-color" content="#0d0f14">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/logo.jpeg">
+<link rel="icon" href="assets/logo.jpeg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Alcom Pilotage">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --red:#E4241B;
+  --red-deep:#B01813;
+  --gold:#F0A81C;
+  --ink:#0D0F14;
+  --panel:#12151C;
+  --panel-2:#171B24;
+  --line:#242833;
+  --paper:#F6F5F2;
+  --paper-2:#FFFFFF;
+  --text:#1B1D22;
+  --muted:#6B7280;
+  --ok:#1E9E62;
+  --warn:#F0A81C;
+  --bad:#E4241B;
+  --radius:14px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  margin:0; background:var(--paper); color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior:none;
+}
+h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif; letter-spacing:-0.01em;}
+.mono{font-family:'JetBrains Mono',monospace;}
+button{font-family:inherit;}
+::selection{background:var(--gold); color:var(--ink);}
+
+/* ---------- LOADER ---------- */
+#boot{position:fixed; inset:0; background:var(--ink); display:flex; align-items:center; justify-content:center; z-index:9999;}
+#boot img{width:120px; opacity:0; animation:bootIn 1s ease forwards;}
+@keyframes bootIn{ to{opacity:1; transform:scale(1);} from{opacity:0; transform:scale(.92);} }
+
+/* ---------- LOGIN ---------- */
+#loginScreen{
+  position:fixed; inset:0; display:flex; flex-direction:column;
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(228,36,27,0.35), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(240,168,28,0.25), transparent 55%),
+    var(--ink);
+  overflow-y:auto;
+}
+.login-wrap{margin:auto; width:100%; max-width:400px; padding:28px 24px 40px;}
+.login-logo{background:#fff; border-radius:18px; padding:22px 18px; display:flex; justify-content:center; box-shadow:0 20px 50px -15px rgba(228,36,27,.45);}
+.login-logo img{width:100%; max-width:260px; display:block;}
+.login-tag{text-align:center; color:#9AA1B2; font-size:13px; margin:18px 0 30px; letter-spacing:.04em; text-transform:uppercase; font-weight:600;}
+.login-card{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:var(--radius); padding:22px; backdrop-filter:blur(10px);}
+.field{margin-bottom:14px;}
+.field label{display:block; font-size:12px; font-weight:600; color:#9AA1B2; margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em;}
+.field input{
+  width:100%; padding:13px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.06); color:#fff; font-size:15px; outline:none; transition:.15s;
+}
+.field input:focus{border-color:var(--gold); background:rgba(255,255,255,0.09);}
+.field input::placeholder{color:#5C6274;}
+.btn-primary{
+  width:100%; padding:14px; border:none; border-radius:10px; font-weight:700; font-size:15px;
+  background:linear-gradient(90deg, var(--red), var(--red-deep)); color:#fff; cursor:pointer;
+  margin-top:6px; transition:.15s; letter-spacing:.01em;
+}
+.btn-primary:active{transform:scale(.98);}
+.btn-primary:disabled{opacity:.6;}
+#loginError{color:#FF8A80; font-size:13px; margin-top:12px; text-align:center; display:none;}
+.login-foot{text-align:center; color:#525869; font-size:11.5px; margin-top:24px; letter-spacing:.02em;}
+
+/* ---------- APP SHELL ---------- */
+#app{display:none; min-height:100vh; min-height:100dvh;}
+.shell{display:flex; min-height:100vh; min-height:100dvh;}
+
+/* Sidebar (desktop) */
+.sidebar{
+  width:232px; background:var(--ink); color:#fff; flex-shrink:0;
+  display:flex; flex-direction:column; position:sticky; top:0; height:100vh; height:100dvh;
+}
+.sidebar-logo{padding:20px 18px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid rgba(255,255,255,.08);}
+.sidebar-logo img{width:34px; height:34px; object-fit:contain; background:#fff; border-radius:8px; padding:4px;}
+.sidebar-logo .t1{font-size:13.5px; font-weight:700; line-height:1.15;}
+.sidebar-logo .t2{font-size:10.5px; color:#8B90A0; text-transform:uppercase; letter-spacing:.05em;}
+.nav-scroll{flex:1; overflow-y:auto; padding:10px 10px;}
+.nav-group-label{font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#565C6E; padding:14px 10px 6px;}
+.nav-item{
+  display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:9px; color:#B7BBC8;
+  font-size:13.5px; font-weight:500; cursor:pointer; margin-bottom:2px; transition:.12s; user-select:none;
+}
+.nav-item svg{width:17px; height:17px; flex-shrink:0; opacity:.85;}
+.nav-item:hover{background:rgba(255,255,255,.05); color:#fff;}
+.nav-item.active{background:linear-gradient(90deg, rgba(228,36,27,.9), rgba(176,24,19,.9)); color:#fff;}
+.nav-item .badge{margin-left:auto; font-size:9.5px; background:rgba(240,168,28,.18); color:var(--gold); padding:2px 6px; border-radius:20px; font-weight:700;}
+.sidebar-foot{padding:12px; border-top:1px solid rgba(255,255,255,.08);}
+.user-chip{display:flex; align-items:center; gap:9px; padding:8px; border-radius:10px; cursor:pointer;}
+.user-chip:hover{background:rgba(255,255,255,.05);}
+.user-avatar{width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--gold),var(--red)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; color:#1a1a1a; flex-shrink:0;}
+.user-meta{overflow:hidden;}
+.user-meta .un{font-size:12.5px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.user-meta .ur{font-size:10.5px; color:#8B90A0;}
+
+/* Main */
+.main{flex:1; min-width:0; display:flex; flex-direction:column;}
+.topbar{
+  position:sticky; top:0; z-index:20; background:rgba(246,245,242,.92); backdrop-filter:blur(10px);
+  border-bottom:1px solid #E7E4DC; padding:14px 18px; display:flex; align-items:center; gap:12px;
+}
+.topbar h1{font-size:18px; margin:0; font-weight:700;}
+.topbar .sub{font-size:12px; color:var(--muted); margin-top:1px;}
+.hamburger{display:none; width:36px; height:36px; border-radius:9px; border:1px solid #E2DFD6; background:#fff; align-items:center; justify-content:center; cursor:pointer;}
+.content{padding:18px; flex:1; padding-bottom:90px;}
+
+/* mobile bottom nav */
+.bottom-nav{display:none;}
+
+/* Cards, KPIs */
+.kpi-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px;}
+.kpi{background:var(--paper-2); border:1px solid #E7E4DC; border-radius:var(--radius); padding:16px;}
+.kpi .lbl{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600;}
+.kpi .val{font-size:26px; font-weight:700; margin-top:6px; font-family:'Space Grotesk',sans-serif;}
+.kpi .sub{font-size:11.5px; color:var(--muted); margin-top:2px;}
+.kpi.accent .val{color:var(--red);}
+
+.card{background:var(--paper-2); border:1px solid #E7E4DC; border-radius:var(--radius); padding:18px; margin-bottom:16px;}
+.card h3{margin:0 0 14px; font-size:15px; font-weight:700;}
+.section-title{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+.section-title h2{font-size:17px; margin:0; font-weight:700;}
+
+.btn{padding:9px 14px; border-radius:9px; border:1px solid #E2DFD6; background:#fff; font-size:13px; font-weight:600; cursor:pointer; color:var(--text);}
+.btn:hover{border-color:#CFCABE;}
+.btn.primary{background:linear-gradient(90deg,var(--red),var(--red-deep)); color:#fff; border:none;}
+.btn.gold{background:var(--gold); color:#1a1305; border:none;}
+.btn.ghost{background:transparent; border:1px dashed #CFCABE;}
+.btn.sm{padding:6px 10px; font-size:12px;}
+.btn.icon{padding:8px; display:inline-flex; align-items:center; justify-content:center;}
+.btn:disabled{opacity:.5; cursor:default;}
+
+table{width:100%; border-collapse:collapse; font-size:13.5px;}
+th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:8px 10px; border-bottom:1px solid #E7E4DC; font-weight:700;}
+td{padding:11px 10px; border-bottom:1px solid #F0EDE6;}
+tr:last-child td{border-bottom:none;}
+tr.rowlink{cursor:pointer;}
+tr.rowlink:hover{background:#FBFAF7;}
+
+.pill{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700;}
+.pill.ok{background:#E4F7EC; color:var(--ok);}
+.pill.warn{background:#FDF1DC; color:#A46A0A;}
+.pill.bad{background:#FCE7E6; color:var(--red-deep);}
+.pill.neutral{background:#EEEDE9; color:#585858;}
+.pill.info{background:#E7EEFC; color:#2B5FCB;}
+
+.progress-track{height:7px; background:#EFEBE2; border-radius:20px; overflow:hidden;}
+.progress-fill{height:100%; background:linear-gradient(90deg,var(--gold),var(--red)); border-radius:20px; transition:.3s;}
+
+.stepper{display:flex; gap:4px; overflow-x:auto; padding-bottom:6px; margin:14px 0;}
+.step{flex:1; min-width:80px; text-align:center; padding:8px 4px; border-radius:9px; font-size:10.5px; font-weight:700; background:#EFEBE2; color:#8A8677; white-space:nowrap;}
+.step.done{background:#1E9E62; color:#fff;}
+.step.current{background:var(--red); color:#fff;}
+
+.empty{text-align:center; padding:50px 20px; color:var(--muted);}
+.empty .ic{font-size:34px; margin-bottom:10px;}
+.empty h4{margin:0 0 6px; color:var(--text); font-size:15px;}
+.empty p{margin:0; font-size:13px;}
+
+.grid-2{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+.grid-3{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+
+/* Modal */
+.modal-overlay{position:fixed; inset:0; background:rgba(13,15,20,.55); z-index:100; display:none; align-items:flex-end; justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:#fff; width:100%; max-width:560px; border-radius:20px 20px 0 0; max-height:88vh; overflow-y:auto; padding:22px; animation:slideUp .25s ease;}
+@media(min-width:720px){
+  .modal-overlay{align-items:center;}
+  .modal{border-radius:16px; max-height:80vh;}
+}
+@keyframes slideUp{from{transform:translateY(30px); opacity:0;} to{transform:translateY(0); opacity:1;}}
+.modal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;}
+.modal-head h3{margin:0; font-size:17px; font-weight:700;}
+.modal-close{width:30px; height:30px; border-radius:50%; border:none; background:#F0EDE6; cursor:pointer; font-size:16px; color:#666;}
+.form-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.form-grid .full{grid-column:1/-1;}
+.f-field{margin-bottom:2px;}
+.f-field label{display:block; font-size:11.5px; font-weight:600; color:var(--muted); margin-bottom:5px;}
+.f-field input, .f-field select, .f-field textarea{
+  width:100%; padding:10px 11px; border-radius:9px; border:1px solid #E2DFD6; font-size:14px; font-family:inherit; background:#FBFAF7;
+}
+.f-field textarea{resize:vertical; min-height:60px;}
+.modal-actions{display:flex; gap:10px; margin-top:18px;}
+.modal-actions .btn{flex:1;}
+
+.toast-host{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center;}
+.toast{background:var(--ink); color:#fff; padding:11px 18px; border-radius:30px; font-size:13px; font-weight:600; box-shadow:0 10px 30px -8px rgba(0,0,0,.4); animation:toastIn .2s ease;}
+.toast.err{background:var(--red-deep);}
+@keyframes toastIn{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+
+/* Search */
+.search-box{position:relative; margin-bottom:14px;}
+.search-box input{width:100%; padding:11px 14px 11px 38px; border-radius:10px; border:1px solid #E2DFD6; background:#fff; font-size:14px;}
+.search-box svg{position:absolute; left:12px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:var(--muted);}
+
+.tag-fournisseur{font-size:11px; background:#EEEDE9; padding:2px 8px; border-radius:6px; color:#585858;}
+
+/* Responsive */
+@media (max-width:880px){
+  .sidebar{position:fixed; left:0; top:0; z-index:60; transform:translateX(-100%); transition:.25s; box-shadow:0 0 0 100vmax rgba(0,0,0,0); width:250px;}
+  .sidebar.open{transform:translateX(0); box-shadow:0 0 0 100vmax rgba(0,0,0,.45);}
+  .hamburger{display:flex;}
+  .content{padding:14px; padding-bottom:100px;}
+  .grid-2, .grid-3{grid-template-columns:1fr;}
+  .form-grid{grid-template-columns:1fr;}
+  .bottom-nav{
+    display:flex; position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid #E7E4DC;
+    padding:8px 4px calc(8px + env(safe-area-inset-bottom)); z-index:50; justify-content:space-around;
+  }
+  .bn-item{display:flex; flex-direction:column; align-items:center; gap:3px; color:#9B9788; font-size:9.5px; font-weight:700; flex:1; padding:4px; cursor:pointer;}
+  .bn-item.active{color:var(--red);}
+  .bn-item svg{width:19px; height:19px;}
+}
+</style>
+</head>
+<body>
+
+<div id="boot"><img src="assets/logo.jpeg" alt="Alcom Petroleum"></div>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen" style="display:none;">
+  <div class="login-wrap">
+    <div class="login-logo"><img src="assets/logo.jpeg" alt="Alcom Petroleum"></div>
+    <div class="login-tag">Pilotage des projets stations-service</div>
+    <div class="login-card">
+      <div class="field">
+        <label>Adresse e-mail</label>
+        <input type="email" id="loginEmail" placeholder="prenom.nom@alcompetroleum.com" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Mot de passe</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn-primary" id="btnLogin">Se connecter</button>
+      <div id="loginError"></div>
+    </div>
+    <div class="login-foot">Accès réservé aux équipes Alcom Petroleum — Application interne de pilotage de projets<br><span id="buildTag" style="opacity:.6;font-size:10px;"></span></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <div class="shell">
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <img src="assets/logo.jpeg" alt="logo">
+        <div>
+          <div class="t1">Alcom Petroleum</div>
+          <div class="t2">Pilotage Projets</div>
+        </div>
+      </div>
+      <div class="nav-scroll" id="navScroll"></div>
+      <div class="sidebar-foot">
+        <div class="user-chip" id="userChip">
+          <div class="user-avatar" id="userAvatar">--</div>
+          <div class="user-meta">
+            <div class="un" id="userName">—</div>
+            <div class="ur" id="userRole">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="topbar">
+        <div class="hamburger" id="hamburger">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </div>
+        <div>
+          <h1 id="pageTitle">Tableau de bord</h1>
+          <div class="sub" id="pageSub">Vue d'ensemble des projets</div>
+        </div>
+      </div>
+      <div class="content" id="content"></div>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-nav" id="bottomNav"></div>
+<div class="modal-overlay" id="modalOverlay"><div class="modal" id="modalBody"></div></div>
+<div class="toast-host" id="toastHost"></div>
+
+<script type="module" src="app.js?v=4"></script>
+</body>
+</html>
