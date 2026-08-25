@@ -94,8 +94,12 @@ Les 8 étapes standard (Études, Travaux préparatoires…) restent le socle com
 
 ⚠️ **Honnêteté technique** : ce n'est pas une IA qui "comprend" le document — c'est une extraction du texte brut (bibliothèque pdf.js) suivie de motifs de reconnaissance simples (ex. "FOURNISSEUR :", "TOTAL TTC"). Ça fonctionne bien pour un PDF texte (généré par ordinateur, comme tes bons de commande), mais pas pour un PDF scanné/photo (image sans couche de texte) — dans ce cas, saisis les informations manuellement, le fichier reste joint pour référence. Une vraie lecture automatique de documents scannés nécessiterait un service d'OCR/IA payant, non configuré ici.
 
-## 11. Documents PDF exportés — en-tête et pied de page uniformes
-Tout document généré depuis l'application (rapport de projet, comparaison des projets, liste des fournisseurs, budget) utilise désormais le même papier en-tête (logo) et le même bandeau de pied de page (site web, e-mail, téléphone, RCCM, NUI) que tes documents officiels — et s'exporte en PDF via la boîte de dialogue d'impression du navigateur (voir section 5).
+## 11. Documents PDF — téléchargement direct
+Tout rapport (projet individuel, tous les projets, comparaison, budget, dépenses, responsables & travaux, fournisseurs, stock) se **télécharge immédiatement en PDF** dès que tu appuies sur le bouton — plus de boîte d'impression, plus d'attente. Chaque PDF reprend le même papier en-tête (logo) et le même bandeau de pied de page (site web, e-mail, téléphone, RCCM, NUI) que tes documents officiels.
+
+Dans l'onglet **Rapports**, une carte "Rapports transversaux" te donne un accès direct à : Budget, Dépenses, Responsables & Travaux, Fournisseurs, Stock — en plus du rapport détaillé par projet et du rapport consolidé (un ou tous les projets).
+
+La fonctionnalité d'import de rapports Word/PDF/Excel a été retirée (elle n'était pas nécessaire) — importe plutôt tes documents directement dans l'onglet Documents de chaque projet, ils apparaîtront aussi dans le module Documentation.
 
 ## 12. Nouveaux modules
 - **Documentation** : vue centralisée de tous les documents de tous les projets (documents, besoins, BC, factures, pro forma, rapports), filtrable par catégorie.

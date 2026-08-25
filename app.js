@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-25-00h20";
+export const BUILD_ID = "2026-08-25-01h10";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -557,7 +557,7 @@ window.exportComparaisonExcel = function(){
     return `<tr><td>${pr.nom}</td><td>${pr.pays||'—'}</td><td>${pr.ville||'—'}</td><td>${pr.responsable||'—'}</td><td>${pr.statut}</td><td>${avance}%</td><td>${fmt(pr.budgetInitial)}</td><td>${fmt(pr.montantEngage)}</td><td>${fmt(pr.montantPaye)}</td><td>${fmt((pr.montantEngage||0)-(pr.montantPaye||0))}</td></tr>`;
   }).join("");
   const bodyHtml = `<div class="report-section"><table><thead><tr><th>Projet</th><th>Pays</th><th>Ville</th><th>Responsable</th><th>Phase</th><th>Avancement</th><th>Budget</th><th>Engagé</th><th>Payé</th><th>Reste</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  printDocument("Comparaison des projets", `${STATE.projects.length} projet(s)`, bodyHtml);
+  downloadPdf("Comparaison des projets", `${STATE.projects.length} projet(s)`, bodyHtml, "Comparaison_projets.pdf");
 };
 
 // -------------------------------------------------------------
@@ -602,7 +602,7 @@ function renderBudgetGlobal(){
 window.exportBudgetPdf = function(){
   const rows = STATE.projects.map(pr=>`<tr><td>${pr.nom}</td><td>${fmt(pr.budgetInitial)}</td><td>${fmt(pr.montantEngage)}</td><td>${fmt(pr.montantPaye)}</td><td>${fmt((Number(pr.budgetInitial)||0)-(Number(pr.montantEngage)||0))}</td></tr>`).join("");
   const bodyHtml = `<div class="report-section"><table><thead><tr><th>Projet</th><th>Budget initial</th><th>Engagé</th><th>Payé</th><th>Écart</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  printDocument("Budget — vue d'ensemble", `${STATE.projects.length} projet(s)`, bodyHtml);
+  downloadPdf("Budget — vue d'ensemble", `${STATE.projects.length} projet(s)`, bodyHtml, "Budget.pdf");
 };
 window.openBudgetLinesModal = function(projectId){
   const pr = STATE.projects.find(p=>p.id===projectId);
@@ -841,7 +841,6 @@ function renderDocumentation(){
     (pr.bonsCommande||[]).forEach(b=>{ if(b.fileUrl) tous.push({nom:b.numero||"Bon de commande", type:"Bon de commande", statut:b.statut, date:b.dateEmission, fileUrl:b.fileUrl, fileName:b.fileName, projet:pr.nom, projectId:pr.id}); });
     (pr.factures||[]).forEach(f=>{ if(f.fileUrl) tous.push({nom:f.numero||"Facture", type:"Facture", statut:f.statut, date:f.echeance, fileUrl:f.fileUrl, fileName:f.fileName, projet:pr.nom, projectId:pr.id}); });
     (pr.proforma||[]).forEach(p=>{ if(p.fileUrl) tous.push({nom:p.numero||"Pro forma", type:"Pro forma", statut:"", date:p.validite, fileUrl:p.fileUrl, fileName:p.fileName, projet:pr.nom, projectId:pr.id}); });
-    (pr.rapportsDocs||[]).forEach(r=> tous.push({nom:r.nom, type:"Rapport", statut:"", date:r.date, fileUrl:r.fileUrl, fileName:r.fileName, projet:pr.nom, projectId:pr.id}));
   });
   const categories = [...new Set(tous.map(d=>d.type))].sort();
   const filtres = tous.filter(d=> !filtre || d.type===filtre);
@@ -985,7 +984,7 @@ function renderImportExport(){
 window.exportFournisseursExcel = function(){
   const rows = STATE.suppliers.map(s=>`<tr><td>${s.nom}</td><td>${s.categorie}</td><td>${s.pays||'—'}</td><td>${s.personneContact||'—'}</td><td>${s.telephone||'—'}</td></tr>`).join("");
   const bodyHtml = `<div class="report-section"><table><thead><tr><th>Nom</th><th>Catégorie</th><th>Pays</th><th>Contact</th><th>Téléphone</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  printDocument("Fournisseurs & prestataires", `${STATE.suppliers.length} fournisseur(s)`, bodyHtml);
+  downloadPdf("Fournisseurs & prestataires", `${STATE.suppliers.length} fournisseur(s)`, bodyHtml, "Fournisseurs.pdf");
 };
 window.importFournisseursExcel = function(){
   const file = $("#importFournisseursFile").files[0];
@@ -2622,55 +2621,73 @@ function renderRapports(){
         <button class="btn sm" onclick="openMultiReportModal()">☑️ Choisir les projets…</button>
       </div>
     </div>
+    <div class="card">
+      <h3>Rapports transversaux — téléchargement immédiat</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn primary sm" onclick="exportBudgetPdf()">📄 Budget</button>
+        <button class="btn primary sm" onclick="downloadDepensesReport()">📄 Dépenses</button>
+        <button class="btn primary sm" onclick="downloadResponsablesReport()">📄 Responsables & Travaux</button>
+        <button class="btn primary sm" onclick="exportFournisseursExcel()">📄 Fournisseurs</button>
+        <button class="btn primary sm" onclick="downloadStockReport()">📄 Stock</button>
+      </div>
+    </div>
   ` + STATE.projects.map(pr=>{
-    const rapports = pr.rapportsDocs || [];
     return `<div class="card">
       <div class="section-title"><h3 style="margin:0;">${pr.nom}</h3>
-        <div style="display:flex;gap:8px;">
-          <button class="btn gold sm" onclick="printProjectReport('${pr.id}')">📄 Générer le rapport</button>
-        </div>
+        <button class="btn gold sm" onclick="printProjectReport('${pr.id}')">📄 Générer le rapport</button>
       </div>
       ${infoRow("Statut", pr.statut)}
       ${infoRow("Budget", fmtXAF(pr.budgetInitial))}
       ${infoRow("Engagé / Payé", `${fmt(pr.montantEngage)} / ${fmt(pr.montantPaye)}`)}
-      <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px;">
-        <div class="section-title"><h4 style="margin:0;font-size:12.5px;color:var(--muted);text-transform:uppercase;">Documents de rapport importés</h4>
-          <button class="btn sm ghost" onclick="openImportRapportModal('${pr.id}')">${icon('plus')} Importer</button>
-        </div>
-        ${rapports.length===0 ? `<p style="font-size:12px;color:var(--muted);">Aucun rapport importé.</p>` :
-          rapports.map(r=>`<div style="padding:6px 0;font-size:12.5px;"><a class="doc-link" href="${r.fileUrl}" download="${esc(r.fileName)}" target="_blank">📎 ${r.nom} — ${r.fileName}</a></div>`).join("")}
-      </div>
     </div>`;
   }).join("");
 }
+window.downloadDepensesReport = async function(){
+  const tous = [];
+  STATE.projects.forEach(pr=> (pr.paiements||[]).forEach(p=> tous.push({...p, projet:pr.nom})));
+  tous.sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const total = tous.reduce((s,p)=>s+(Number(p.montant)||0),0);
+  const rows = tous.map(p=>`<tr><td>${p.date}</td><td>${p.projet}</td><td>${p.moyen}</td><td>${p.description||'—'}</td><td>${fmt(p.montant)}</td></tr>`).join("");
+  const bodyHtml = `<div class="report-row"><span>Total des mouvements</span><strong>${fmt(total)} FCFA</strong></div>
+    <div class="report-section"><table><thead><tr><th>Date</th><th>Projet</th><th>Moyen</th><th>Description</th><th>Montant</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  await downloadPdf("Dépenses — tous projets", `${tous.length} mouvement(s)`, bodyHtml, "Depenses.pdf");
+};
+window.downloadResponsablesReport = async function(){
+  const parPersonne = {};
+  STATE.projects.forEach(pr=>{
+    const addTask = (nom, label, source)=>{ if(!nom) return; if(!parPersonne[nom]) parPersonne[nom]=[]; parPersonne[nom].push(`${label} — ${pr.nom}${source?` (${source})`:''}`); };
+    if(pr.responsable) addTask(pr.responsable, "Responsable du projet", "");
+    Object.entries(pr.phaseChecklists||{}).forEach(([phase, items])=> (items||[]).forEach(it=> addTask(it.responsable, it.label, phase)));
+    (pr.planning||[]).forEach(t=> addTask(t.responsable, t.nom, "Planning"));
+  });
+  const bodyHtml = Object.keys(parPersonne).sort().map(nom=>`
+    <div class="report-section"><h4>${nom}</h4>${parPersonne[nom].map(t=>`<div class="report-row"><span>${t}</span></div>`).join("")}</div>`).join("") ||
+    `<p style="font-size:12px;color:#888;">Aucun responsable assigné.</p>`;
+  await downloadPdf("Responsables & Travaux", "Vue transversale", bodyHtml, "Responsables_Travaux.pdf");
+};
+window.downloadStockReport = async function(){
+  const list = STATE.stock || [];
+  const rows = list.map(s=>`<tr><td>${s.nom}</td><td>${s.categorie||'—'}</td><td>${s.quantite} ${s.unite||'u.'}</td><td>${s.emplacement||'—'}</td></tr>`).join("");
+  const bodyHtml = `<div class="report-section"><table><thead><tr><th>Article</th><th>Catégorie</th><th>Quantité</th><th>Emplacement</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  await downloadPdf("Stock — magasin", `${list.length} article(s)`, bodyHtml, "Stock.pdf");
+};
 
-window.openImportRapportModal = function(projectId){
-  openModal(`<div class="modal-head"><h3>Importer un rapport</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="f-field" style="margin-bottom:12px;"><label>Nom du rapport</label><input id="rpNom" placeholder="Rapport mensuel — août 2026"></div>
-    <div class="f-field"><label>Fichier — PDF, Word, Excel (max ~700 Ko)</label><input type="file" id="rpFile" accept=".pdf,.doc,.docx,.xls,.xlsx"></div>
-    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" id="rpSubmitBtn" onclick="submitImportRapport('${projectId}')">Importer</button></div>`);
-};
-window.submitImportRapport = async function(projectId){
-  const nom = $("#rpNom").value.trim();
-  const file = $("#rpFile").files[0];
-  if(!nom || !file){ toast("Nom et fichier requis", true); return; }
-  if(file.size > 720000){ toast("Fichier trop volumineux (max ~700 Ko)", true); return; }
-  const btn = $("#rpSubmitBtn"); btn.disabled = true; btn.textContent = "Import…";
-  try{
-    const fileUrl = await fileToBase64(file);
-    const pr = STATE.projects.find(p=>p.id===projectId);
-    const rapportsDocs = [...(pr.rapportsDocs||[]), {nom, fileName:file.name, fileUrl, date:todayISO()}];
-    await updateDoc(doc(db,"projects",projectId), {rapportsDocs});
-    closeModal(); toast("Rapport importé ✓");
-  }catch(e){ toast("Erreur : "+e.message, true); btn.disabled=false; btn.textContent="Importer"; }
-};
 
 // Génère un rapport complet avec papier en-tête et lance l'impression / export PDF
 // -------------------------------------------------------------
 // GÉNÉRATEUR PDF GÉNÉRIQUE — en-tête (logo) + pied de page (bandeau
 // coordonnées) identiques sur tout document exporté ou téléchargé.
 // -------------------------------------------------------------
-function printDocument(title, subtitle, bodyHtml){
+// -------------------------------------------------------------
+// GÉNÉRATEUR PDF — téléchargement direct (pas de boîte d'impression).
+// Rend le document hors écran, le capture en image, puis génère un
+// vrai fichier PDF téléchargé immédiatement (jsPDF + html2canvas).
+// -------------------------------------------------------------
+async function downloadPdf(title, subtitle, bodyHtml, filename){
+  if(typeof html2canvas==="undefined" || typeof window.jspdf==="undefined"){
+    toast("Bibliothèque PDF non chargée — vérifie ta connexion", true); return;
+  }
+  toast("Génération du PDF…");
   const now = new Date();
   const area = document.getElementById("printReportArea");
   area.innerHTML = `
@@ -2692,21 +2709,40 @@ function printDocument(title, subtitle, bodyHtml){
       <span>${COMPANY.nui}</span>
     </div>
   `;
-  area.style.display = "block";
-  // IMPORTANT : window.print() doit être appelé de façon SYNCHRONE dans le
-  // gestionnaire de clic — Safari iOS bloque silencieusement l'impression
-  // si elle est déclenchée après un délai (setTimeout), même court.
-  window.print();
-  window.onafterprint = () => { area.style.display = "none"; };
-  // Filet de sécurité : si l'événement afterprint ne se déclenche pas
-  // (certains navigateurs), on masque quand même après un délai généreux.
-  setTimeout(()=>{ if(area.style.display==="block") area.style.display = "none"; }, 4000);
+  area.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;background:#fff;color:#111;padding:24px;display:block;";
+  try{
+    await new Promise(r=>setTimeout(r,60)); // laisse le DOM se peindre avant capture
+    const canvas = await html2canvas(area, {scale:2, backgroundColor:"#ffffff", useCORS:true});
+    const imgData = canvas.toDataURL("image/jpeg", 0.92);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p","mm","a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgWidth = pageWidth;
+    const imgHeight = canvas.height * imgWidth / canvas.width;
+    let heightLeft = imgHeight, position = 0;
+    pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+    while(heightLeft > 0){
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+    pdf.save(filename || `${title.replace(/[^a-zA-Z0-9]+/g,'_')}.pdf`);
+    toast("PDF téléchargé ✓");
+  }catch(e){
+    toast("Erreur de génération PDF : "+e.message, true);
+  }finally{
+    area.style.cssText = "display:none;";
+    area.innerHTML = "";
+  }
 }
 
-window.printProjectReport = function(projectId){
+window.printProjectReport = async function(projectId){
   const pr = STATE.projects.find(p=>p.id===projectId);
   if(!pr) return;
-  printDocument(`Rapport de projet — ${pr.nom}`, `Code projet : ${pr.code||'—'}`, buildProjectReportBody(pr));
+  await downloadPdf(`Rapport de projet — ${pr.nom}`, `Code projet : ${pr.code||'—'}`, buildProjectReportBody(pr), `Rapport_${pr.nom.replace(/\s+/g,'_')}.pdf`);
 };
 
 // Construit le contenu HTML du rapport d'un seul projet — réutilisé pour un rapport
@@ -2802,16 +2838,17 @@ function buildProjectReportBody(pr, isGrouped){
   `;
 }
 
-// Génère un rapport PDF couvrant plusieurs (ou tous les) projets à la fois,
-// chaque projet démarrant sur une nouvelle page à l'impression.
-window.printMultiProjectReport = function(projectIds){
+// Génère un rapport PDF téléchargeable couvrant plusieurs (ou tous les) projets,
+// chaque projet démarrant sur une nouvelle page.
+window.printMultiProjectReport = async function(projectIds){
   const list = projectIds && projectIds.length ? STATE.projects.filter(p=>projectIds.includes(p.id)) : STATE.projects;
   if(list.length===0){ toast("Aucun projet sélectionné", true); return; }
   const bodyHtml = list.map((pr,i)=>`<div style="${i>0?'page-break-before:always;':''}">${buildProjectReportBody(pr, i===0?'first':'next')}</div>`).join("");
-  printDocument(
+  await downloadPdf(
     list.length===1 ? `Rapport de projet — ${list[0].nom}` : `Rapport consolidé — ${list.length} projets`,
     list.length===1 ? `Code projet : ${list[0].code||'—'}` : list.map(p=>p.nom).join(", "),
-    bodyHtml
+    bodyHtml,
+    list.length===1 ? `Rapport_${list[0].nom.replace(/\s+/g,'_')}.pdf` : `Rapport_consolide_${list.length}_projets.pdf`
   );
 };
 window.openMultiReportModal = function(){
