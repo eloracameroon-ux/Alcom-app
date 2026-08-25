@@ -75,3 +75,20 @@ Depuis **Paramètres → Utilisateurs**, tu peux maintenant choisir précisémen
 
 ## 8. Appel et WhatsApp direct
 Fournisseurs et responsables ont maintenant un numéro de téléphone cliquable (📞 appelle directement, 💬 ouvre WhatsApp avec un message pré-rempli). Pour les responsables, ajoute leur numéro une fois depuis **Responsables & travaux** — il sera ensuite réutilisé partout, y compris pour les alertes.
+
+## 9. Modifier et supprimer — réservé à Administrateur / Direction / DAF
+Le bouton 🗑️ apparaît maintenant partout (documents, fournisseurs, bons de commande, factures, pro forma, garanties, équipements, livraisons, risques, planning, utilisateurs) mais **uniquement pour les comptes à accès complet**. Chaque suppression demande une confirmation et est tracée dans l'Historique.
+
+**Étapes du projet entièrement personnalisables** : dans l'onglet Checklist, l'administrateur peut désormais :
+- Ajouter un point à n'importe quelle étape (bouton "+ Ajouter un point")
+- Supprimer un point existant (🗑️ sur chaque ligne)
+- Créer une étape entièrement personnalisée propre à un projet (bouton "+ Étape" à côté du sélecteur de phases, marquée ★) avec sa propre checklist, et la supprimer ensuite si besoin
+
+Les 8 étapes standard (Études, Travaux préparatoires…) restent le socle commun à tous les projets — c'est ce qui permet la comparaison et les statistiques du tableau de bord — mais leur contenu (les points de checklist) est entièrement modifiable, et tu peux ajouter autant d'étapes personnalisées que nécessaire par projet.
+
+**Dates antidatables** : les champs de date (besoins, bons de commande, documents, points de checklist) acceptent désormais n'importe quelle date passée — utile pour enregistrer des tâches déjà réalisées il y a plusieurs semaines ou mois.
+
+## 10. Import d'une expression de besoin (PDF)
+Dans Achats → Besoins → **"Importer un document"** : choisis un PDF, le texte est extrait automatiquement (bibliothèque pdf.js), puis tu coches les lignes qui correspondent à des articles pour les ajouter en un clic comme demandes de besoin.
+
+⚠️ **Honnêteté technique** : ce n'est pas une IA qui "comprend" le document — c'est une extraction du texte brut suivie d'une sélection manuelle. Ça fonctionne bien pour un PDF texte (généré par ordinateur), mais pas pour un PDF scanné/photo (image sans couche de texte) — dans ce cas, ajoute les besoins manuellement, le fichier reste joint pour référence. Une vraie lecture automatique de documents scannés nécessiterait un service d'OCR/IA payant, non configuré ici.

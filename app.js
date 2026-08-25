@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-21h00";
+export const BUILD_ID = "2026-08-24-22h15";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -248,6 +248,113 @@ const BOTTOM_NAV = ["dashboard","projects","recherche","alertes","parametres"];
 function hasFullAccess(){
   return ["admin","direction","daf"].includes(STATE.profile?.role);
 }
+
+// Bouton de suppression, affiché uniquement pour Administrateur / Direction / DAF
+function delBtn(onclick){
+  return hasFullAccess() ? `<button class="btn sm icon" style="color:var(--bad);" onclick="${onclick}" title="Supprimer">🗑️</button>` : "";
+}
+// Supprime un élément d'une liste stockée dans le document du projet (documents, BC, factures, équipements…)
+window.deleteArrayItem = async function(projectId, field, index, label){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm(`Supprimer définitivement "${label||'cet élément'}" ? Cette action est irréversible.`)) return;
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const arr = JSON.parse(JSON.stringify(pr[field]||[]));
+  arr.splice(index,1);
+  await updateDoc(doc(db,"projects",projectId), {[field]:arr});
+  logActivity(projectId, "Suppression", `${field} — ${label||'élément'} supprimé`, label||"", "");
+  toast("Supprimé ✓");
+};
+// Supprime un point d'une checklist de phase (structure imbriquée phaseChecklists[phase])
+window.deletePhaseChecklistItem = async function(projectId, phase, index, label){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm(`Supprimer définitivement "${label||'ce point'}" de la checklist "${phase}" ?`)) return;
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists||{}));
+  (phaseChecklists[phase]||[]).splice(index,1);
+  await updateDoc(doc(db,"projects",projectId), {phaseChecklists});
+  logActivity(projectId, "Suppression", `Checklist ${phase} — ${label||'point'} supprimé`, label||"", "");
+  toast("Point supprimé ✓");
+};
+// Ajoute un nouveau point à une checklist de phase (mode tâche ou document)
+window.openAddPhaseItemModal = function(projectId, phase, mode){
+  openModal(`<div class="modal-head"><h3>Ajouter un point — ${esc(phase)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field"><label>Intitulé du point</label><input id="apiLabel" placeholder="Ex : Attestation de non-litige"></div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitAddPhaseItem('${projectId}','${phase}','${mode}')">Ajouter</button></div>`);
+};
+window.submitAddPhaseItem = async function(projectId, phase, mode){
+  const label = $("#apiLabel").value.trim();
+  if(!label){ toast("L'intitulé est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const phaseChecklists = JSON.parse(JSON.stringify(pr.phaseChecklists||{}));
+  if(!phaseChecklists[phase]) phaseChecklists[phase] = [];
+  const item = mode==="document"
+    ? {label, requis:"Oui", disponible:"Non", valide:"Non", expire:"Non", responsable:"", dateDebut:"", dateFin:""}
+    : {label, responsable:"", statut:"Non commencé", avancement:0, dateDebut:"", dateFin:""};
+  phaseChecklists[phase].push(item);
+  await updateDoc(doc(db,"projects",projectId), {phaseChecklists});
+  logActivity(projectId, "Checklist", `Point ajouté — ${phase}`, "", label);
+  closeModal(); toast("Point ajouté ✓");
+};
+// Ajoute une étape (phase) personnalisée à un projet, avec sa propre checklist
+window.openAddPhaseModal = function(projectId){
+  openModal(`<div class="modal-head"><h3>Ajouter une étape</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Cette étape n'existera que pour ce projet, en plus des 8 étapes standard.</p>
+    <div class="f-field"><label>Nom de l'étape</label><input id="apNom" placeholder="Ex : Cérémonie d'ouverture"></div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitAddPhase('${projectId}')">Créer l'étape</button></div>`);
+};
+window.submitAddPhase = async function(projectId){
+  const nom = $("#apNom").value.trim();
+  if(!nom){ toast("Le nom est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const existants = [...PROJECT_STATUTS, ...(pr.phasesPersonnalisees||[]).map(p=>p.nom)];
+  if(existants.includes(nom)){ toast("Une étape porte déjà ce nom", true); return; }
+  const phasesPersonnalisees = [...(pr.phasesPersonnalisees||[]), {nom}];
+  const phaseChecklists = {...(pr.phaseChecklists||{}), [nom]:[]};
+  await updateDoc(doc(db,"projects",projectId), {phasesPersonnalisees, phaseChecklists});
+  logActivity(projectId, "Projet", "Étape personnalisée créée", "", nom);
+  closeModal(); toast("Étape créée ✓");
+  goTo("projects",{projectId, projectTab:"checklist", phase:nom});
+};
+window.deleteCustomPhase = async function(projectId, nom){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm(`Supprimer l'étape personnalisée "${nom}" et tous ses points ? Cette action est irréversible.`)) return;
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const phasesPersonnalisees = (pr.phasesPersonnalisees||[]).filter(p=>p.nom!==nom);
+  const phaseChecklists = {...(pr.phaseChecklists||{})};
+  delete phaseChecklists[nom];
+  await updateDoc(doc(db,"projects",projectId), {phasesPersonnalisees, phaseChecklists});
+  logActivity(projectId, "Suppression", "Étape personnalisée supprimée", nom, "");
+  toast("Étape supprimée ✓");
+  goTo("projects",{projectId, projectTab:"checklist", phase:PROJECT_STATUTS[0]});
+};
+window.deleteProject = async function(projectId){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  if(!pr) return;
+  if(!confirm(`⚠️ Supprimer définitivement le projet "${pr.nom}" et TOUTES ses données (documents, achats, finances, historique) ? Cette action est irréversible.`)) return;
+  await deleteDoc(doc(db,"projects",projectId));
+  logActivity(null, "Suppression", `Projet supprimé — ${pr.nom}`, pr.nom, "");
+  toast("Projet supprimé ✓");
+  goTo("projects");
+};
+window.deleteSupplier = async function(supplierId, nom){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm(`Supprimer le fournisseur "${nom}" ?`)) return;
+  await deleteDoc(doc(db,"suppliers",supplierId));
+  toast("Fournisseur supprimé ✓");
+};
+window.deleteUserAccount = async function(userId, nom){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm(`Retirer l'accès de "${nom}" à l'application ? (Le compte de connexion Firebase devra être supprimé séparément dans la console Firebase si besoin.)`)) return;
+  await deleteDoc(doc(db,"users",userId));
+  toast("Accès retiré ✓");
+};
+window.deleteContact = async function(contactId, nom){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm(`Supprimer le contact "${nom}" ?`)) return;
+  await deleteDoc(doc(db,"contacts",contactId));
+  toast("Contact supprimé ✓");
+};
 function allowedNavItems(){
   if(hasFullAccess() || !STATE.profile) return NAV_ITEMS;
   const allowed = STATE.profile.modulesAutorises && STATE.profile.modulesAutorises.length
@@ -531,7 +638,7 @@ function renderResponsablesGlobal(){
       <div class="section-title">
         <h3 style="margin:0;">${nom}</h3>
         <div style="display:flex;gap:6px;align-items:center;">
-          ${c && c.telephone ? contactButtons(c.telephone, `Bonjour ${nom}, ici ${COMPANY.nom}.`) : `<button class="btn sm" onclick="openContactModal('${esc(nom)}')">+ Ajouter le numéro</button>`}
+          ${c && c.telephone ? contactButtons(c.telephone, `Bonjour ${nom}, ici ${COMPANY.nom}.`) + (c ? delBtn(`deleteContact('${c.id}','${esc(nom)}')`) : '') : `<button class="btn sm" onclick="openContactModal('${esc(nom)}')">+ Ajouter le numéro</button>`}
         </div>
       </div>
       ${parPersonne[nom].map(t=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;">
@@ -1079,6 +1186,7 @@ function renderProjectFiche(pr, idx){
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn" onclick="openEditProjectModal('${pr.id}')">Modifier la fiche</button>
         <button class="btn" onclick="openStatutModal('${pr.id}')">Changer de phase</button>
+        ${hasFullAccess() ? `<button class="btn" style="color:var(--bad);border-color:var(--bad);" onclick="deleteProject('${pr.id}')">🗑️ Supprimer ce projet</button>` : ""}
       </div>
     </div>
   `;
@@ -1153,7 +1261,10 @@ window.submitStatut = async function(id){
 };
 
 function renderProjectChecklist(pr){
+  const customPhases = (pr.phasesPersonnalisees||[]).map(p=>p.nom);
+  const allPhases = [...PROJECT_STATUTS, ...customPhases];
   const phase = STATE.activePhase || (PHASE_ROUTE_TAB[pr.statut] ? PROJECT_STATUTS.find(s=>!PHASE_ROUTE_TAB[s]) : pr.statut) || PROJECT_STATUTS[0];
+  const isCustomPhase = customPhases.includes(phase);
   const mode = PHASE_ITEM_MODE[phase] || "task";
   const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
   const items = phaseChecklists[phase] || [];
@@ -1162,19 +1273,25 @@ function renderProjectChecklist(pr){
   const pct = total ? Math.round(done/total*100) : 0;
 
   const phasePicker = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;">
-    ${PROJECT_STATUTS.map(s=>{
+    ${allPhases.map(s=>{
+      const isCustom = customPhases.includes(s);
       const targetTab = PHASE_ROUTE_TAB[s] || "checklist";
       const opts = PHASE_ROUTE_TAB[s] ? `{projectId:'${pr.id}',projectTab:'${targetTab}'}` : `{projectId:'${pr.id}',projectTab:'checklist',phase:'${s}'}`;
-      return `<div onclick="goTo('projects',${opts})" class="pill ${s===phase?'bad':'neutral'}" style="cursor:pointer;white-space:nowrap;flex-shrink:0;">${s}${PHASE_ROUTE_TAB[s]?' ↗':''}</div>`;
+      return `<div onclick="goTo('projects',${opts})" class="pill ${s===phase?'bad':'neutral'}" style="cursor:pointer;white-space:nowrap;flex-shrink:0;">${s}${PHASE_ROUTE_TAB[s]?' ↗':''}${isCustom?' ★':''}</div>`;
     }).join("")}
+    ${hasFullAccess() ? `<div onclick="openAddPhaseModal('${pr.id}')" class="pill" style="cursor:pointer;white-space:nowrap;flex-shrink:0;border:1px dashed var(--muted);color:var(--muted);">+ Étape</div>` : ""}
   </div>`;
 
   const header = `<div class="card">
     <div class="section-title">
-      <h3 style="margin:0;">Checklist — ${phase}</h3>
-      <button class="btn sm ${pr.statut===phase?'ghost':'primary'}" ${pr.statut===phase?'disabled':''} onclick="jumpToPhase('${pr.id}','${phase}')">
-        ${pr.statut===phase?'Phase actuelle du projet':'Définir comme phase actuelle'}
-      </button>
+      <h3 style="margin:0;">Checklist — ${phase}${isCustomPhase?' <span class="pill neutral" style="font-size:10px;">personnalisée</span>':''}</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn sm ${pr.statut===phase?'ghost':'primary'}" ${pr.statut===phase||isCustomPhase?'disabled':''} onclick="jumpToPhase('${pr.id}','${phase}')">
+          ${pr.statut===phase?'Phase actuelle':'Définir comme phase actuelle'}
+        </button>
+        ${hasFullAccess() ? `<button class="btn sm" onclick="openAddPhaseItemModal('${pr.id}','${phase}','${mode}')">${icon('plus')} Ajouter un point</button>` : ""}
+        ${hasFullAccess() && isCustomPhase ? `<button class="btn sm" style="color:var(--bad);" onclick="deleteCustomPhase('${pr.id}','${esc(phase)}')">🗑️ Supprimer l'étape</button>` : ""}
+      </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div class="progress-track" style="flex:1;height:9px;"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -1189,7 +1306,10 @@ function renderProjectChecklist(pr){
     list = `<div class="card">${items.map((it,ii)=>{
       const showFollowUp = it.valide !== "Oui"; // tant que non validé : responsable + dates utiles (lenteur administrative)
       return `<div style="padding:11px 0;border-bottom:1px solid var(--line);">
-        <strong style="font-size:13.5px;">${it.label}</strong>
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+          <strong style="font-size:13.5px;">${it.label}</strong>
+          ${delBtn(`deletePhaseChecklistItem('${pr.id}','${phase}',${ii},'${esc(it.label)}')`)}
+        </div>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
           ${docToggle(pr.id, phase, ii, "requis", "Requis", it.requis)}
           ${docToggle(pr.id, phase, ii, "disponible", "Disponible", it.disponible)}
@@ -1208,14 +1328,17 @@ function renderProjectChecklist(pr){
       <div style="padding:11px 0;border-bottom:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <strong style="font-size:13.5px;">${it.label}</strong>
-          <select onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'statut',this.value)" style="font-size:11.5px;padding:5px 7px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);flex-shrink:0;">
-            ${["Non commencé","En cours","Terminé","Bloqué","Non applicable","En retard"].map(s=>`<option ${s===it.statut?'selected':''}>${s}</option>`).join("")}
-          </select>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <select onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'statut',this.value)" style="font-size:11.5px;padding:5px 7px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+              ${["Non commencé","En cours","Terminé","Bloqué","Non applicable","En retard"].map(s=>`<option ${s===it.statut?'selected':''}>${s}</option>`).join("")}
+            </select>
+            ${delBtn(`deletePhaseChecklistItem('${pr.id}','${phase}',${ii},'${esc(it.label)}')`)}
+          </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:7px;flex-wrap:wrap;">
           <input placeholder="Responsable" value="${esc(it.responsable)}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'responsable',this.value)" style="flex:1;min-width:120px;font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-          <input type="date" value="${it.dateDebut||''}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'dateDebut',this.value)" style="font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-          <input type="date" value="${it.dateFin||''}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'dateFin',this.value)" style="font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          <input type="date" title="Date de début (antidatable)" value="${it.dateDebut||''}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'dateDebut',this.value)" style="font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          <input type="date" title="Date de fin (antidatable)" value="${it.dateFin||''}" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'dateFin',this.value)" style="font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
           <input type="range" min="0" max="100" value="${it.avancement||0}" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updatePhaseItem('${pr.id}','${phase}',${ii},'avancement',Number(this.value))" style="flex:1;">
@@ -1341,6 +1464,7 @@ function renderProjectDocuments(pr){
           ${d.fileUrl?`<br><a class="doc-link" href="${d.fileUrl}" download="${esc(d.fileName||d.nom)}" target="_blank" rel="noopener">📎 ${d.fileName||'Ouvrir le fichier'}</a>`:""}
         </div>
         <span class="pill ${expire?'bad':expBientot?'warn':d.statut==='Validé'?'ok':d.statut==='Expiré'?'bad':'warn'}" style="flex-shrink:0;">${expire?'Expiré':expBientot?'Expire bientôt':d.statut}</span>
+        ${delBtn(`deleteArrayItem('${pr.id}','documents',${i},'${esc(d.nom)}')`)}
       </div>`;
     }).join("")}</div>`}
   `;
@@ -1356,7 +1480,8 @@ window.openAddDocModal = function(projectId){
       <div class="f-field"><label>Statut</label>
         <select id="dStatut"><option>En attente</option><option>Validé</option><option>Expiré</option></select>
       </div>
-      <div class="f-field full"><label>Date d'expiration (si applicable)</label><input type="date" id="dExpiration"></div>
+      <div class="f-field"><label>Date d'ajout (antidatable si déjà fait)</label><input type="date" id="dDate" value="${todayISO()}"></div>
+      <div class="f-field"><label>Date d'expiration (si applicable)</label><input type="date" id="dExpiration"></div>
     </div>
     <div class="f-field"><label>Fichier — PDF, Word, Excel ou photo (max ~700 Ko)</label><input type="file" id="dFile" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"></div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" id="dSubmitBtn" onclick="submitAddDoc('${projectId}')">Ajouter</button></div>
@@ -1389,7 +1514,7 @@ window.submitAddDoc = async function(projectId){
       fileUrl = await fileToBase64(file);
       fileName = file.name;
     }
-    const docs = [...(pr.documents||[]), {nom, type:$("#dType").value, statut:$("#dStatut").value, date:todayISO(), dateExpiration:$("#dExpiration").value, fileUrl, fileName, importePar:STATE.profile?STATE.profile.nom:"—"}];
+    const docs = [...(pr.documents||[]), {nom, type:$("#dType").value, statut:$("#dStatut").value, date:$("#dDate").value||todayISO(), dateExpiration:$("#dExpiration").value, fileUrl, fileName, importePar:STATE.profile?STATE.profile.nom:"—"}];
     await updateDoc(doc(db,"projects",projectId), {documents:docs});
     logActivity(projectId, "Documents", `Document ajouté — ${nom}`, "", $("#dType").value);
     closeModal(); toast("Document ajouté ✓");
@@ -1400,18 +1525,21 @@ window.submitAddDoc = async function(projectId){
 // PLANNING (calendrier des tâches)
 // -------------------------------------------------------------
 function renderProjectPlanning(pr){
-  const tasks = (pr.planning||[]).slice().sort((a,b)=>(a.dateDebut||"").localeCompare(b.dateDebut||""));
+  const tasks = (pr.planning||[]).map((t,origIdx)=>({...t, origIdx})).sort((a,b)=>(a.dateDebut||"").localeCompare(b.dateDebut||""));
   return `
     <div class="section-title"><div></div><button class="btn primary sm" onclick="openPlanningModal('${pr.id}')">${icon('plus')} Nouvelle tâche</button></div>
     ${tasks.length===0 ? emptyState("projects","Aucune tâche planifiée","Ajoutez les tâches du planning avec leurs échéances.") :
-    `<div class="card">${tasks.map((t,i)=>{
+    `<div class="card">${tasks.map((t)=>{
       const late = t.statut!=="Terminé" && t.dateFin && new Date(t.dateFin) < new Date();
-      return `<div style="padding:10px 0;border-bottom:1px solid var(--line);">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-          <strong style="font-size:13.5px;">${t.nom}</strong>
-          <span class="pill ${late?'bad':t.statut==='Terminé'?'ok':'neutral'}">${late?'En retard':t.statut}</span>
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;">
+        <div style="min-width:0;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <strong style="font-size:13.5px;">${t.nom}</strong>
+            <span class="pill ${late?'bad':t.statut==='Terminé'?'ok':'neutral'}">${late?'En retard':t.statut}</span>
+          </div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${t.responsable||'—'} · ${t.dateDebut||'?'} → ${t.dateFin||'?'}</div>
         </div>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${t.responsable||'—'} · ${t.dateDebut||'?'} → ${t.dateFin||'?'}</div>
+        ${delBtn(`deleteArrayItem('${pr.id}','planning',${t.origIdx},'${esc(t.nom)}')`)}
       </div>`;
     }).join("")}</div>`}
   `;
@@ -1520,14 +1648,27 @@ window.setAchatsSubtab = function(id){ STATE.achatsSubtab = id; render(); };
 // -- Demandes de besoin --
 function renderBesoins(pr){
   const list = pr.besoins || [];
-  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openBesoinModal('${pr.id}')">${icon('plus')} Nouvelle demande</button></div>
+  return `<div class="section-title">
+      <div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn gold sm" onclick="openBesoinPdfModal('${pr.id}')">📄 Importer un document</button>
+        <button class="btn primary sm" onclick="openBesoinModal('${pr.id}')">${icon('plus')} Nouvelle demande</button>
+      </div>
+    </div>
   ${list.length===0 ? emptyState("projects","Aucune demande de besoin","Enregistrez ici ce qui doit être acheté avant de consulter les fournisseurs.") :
   `<div class="card">${list.map((b,i)=>`
     <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">
-      <div><strong style="font-size:13.5px;">${b.article}</strong><br><span style="font-size:11.5px;color:var(--muted)">Qté ${b.quantite} · Demandé par ${b.demandeur||'—'} le ${b.date}</span></div>
-      <select onchange="updateBesoinStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);height:fit-content;">
-        ${["Identifié","Fournisseur contacté","Devis reçu","Validé","Clôturé"].map(s=>`<option ${s===b.statut?'selected':''}>${s}</option>`).join("")}
-      </select>
+      <div style="min-width:0;">
+        <strong style="font-size:13.5px;">${b.article}</strong><br>
+        <span style="font-size:11.5px;color:var(--muted)">Qté ${b.quantite} · Demandé par ${b.demandeur||'—'} le ${b.date}</span>
+        ${b.fileUrl?`<br><a class="doc-link" href="${b.fileUrl}" download="${esc(b.fileName||b.article)}" target="_blank">📎 ${b.fileName||'Document'}</a>`:""}
+      </div>
+      <div style="display:flex;gap:6px;align-items:flex-start;flex-shrink:0;">
+        <select onchange="updateBesoinStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          ${["Identifié","Fournisseur contacté","Devis reçu","Validé","Clôturé"].map(s=>`<option ${s===b.statut?'selected':''}>${s}</option>`).join("")}
+        </select>
+        ${delBtn(`deleteArrayItem('${pr.id}','besoins',${i},'${esc(b.article)}')`)}
+      </div>
     </div>`).join("")}</div>`}`;
 }
 window.openBesoinModal = function(projectId){
@@ -1536,6 +1677,7 @@ window.openBesoinModal = function(projectId){
     <div class="form-grid">
       <div class="f-field"><label>Quantité</label><input type="number" id="bsQte" value="1"></div>
       <div class="f-field"><label>Demandeur</label><input id="bsDemandeur"></div>
+      <div class="f-field full"><label>Date (peut être antérieure si déjà fait)</label><input type="date" id="bsDate" value="${todayISO()}"></div>
     </div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitBesoin('${projectId}')">Enregistrer</button></div>`);
 };
@@ -1543,7 +1685,7 @@ window.submitBesoin = async function(projectId){
   const article = $("#bsArticle").value.trim();
   if(!article){ toast("L'article est requis", true); return; }
   const pr = STATE.projects.find(p=>p.id===projectId);
-  const besoins = [...(pr.besoins||[]), {article, quantite:Number($("#bsQte").value||1), demandeur:$("#bsDemandeur").value.trim(), date:todayISO(), statut:"Identifié"}];
+  const besoins = [...(pr.besoins||[]), {article, quantite:Number($("#bsQte").value||1), demandeur:$("#bsDemandeur").value.trim(), date:$("#bsDate").value||todayISO(), statut:"Identifié"}];
   await updateDoc(doc(db,"projects",projectId), {besoins});
   closeModal(); toast("Demande enregistrée ✓");
 };
@@ -1554,6 +1696,91 @@ window.updateBesoinStatut = async function(projectId, i, val){
   await updateDoc(doc(db,"projects",projectId), {besoins});
 };
 
+// -- Import d'une expression de besoin (PDF) avec extraction de texte assistée --
+// Remarque honnête : il ne s'agit pas d'une IA qui comprend le document, mais d'une
+// extraction du texte brut (pdf.js) + sélection manuelle des lignes pertinentes.
+// Bien plus fiable qu'un remplissage automatique qui pourrait se tromper.
+window.openBesoinPdfModal = function(projectId){
+  openModal(`<div class="modal-head"><h3>Importer une expression de besoin</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Choisis un PDF ou une photo. Le texte est extrait automatiquement — coche ensuite les lignes qui correspondent à des articles à ajouter comme besoins.</p>
+    <input type="file" id="besoinPdfFile" accept=".pdf,image/*" style="margin-bottom:10px;">
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="f-field"><label>Demandeur</label><input id="besoinPdfDemandeur"></div>
+      <div class="f-field"><label>Date</label><input type="date" id="besoinPdfDate" value="${todayISO()}"></div>
+    </div>
+    <button class="btn sm" onclick="extractBesoinPdf('${projectId}')">Extraire le texte</button>
+    <div id="besoinPdfResult" style="margin-top:14px;"></div>
+  `);
+};
+window.extractBesoinPdf = async function(projectId){
+  const file = $("#besoinPdfFile").files[0];
+  const resultHost = $("#besoinPdfResult");
+  if(!file){ toast("Choisis un fichier", true); return; }
+  resultHost.innerHTML = `<p style="font-size:12px;color:var(--muted);">Extraction en cours…</p>`;
+  try{
+    let fileUrl = null, fileName = file.name;
+    if(file.size <= 720000){ fileUrl = await fileToBase64(file); }
+
+    if(file.type === "application/pdf"){
+      if(typeof pdfjsLib === "undefined"){ resultHost.innerHTML = `<p style="font-size:12px;color:var(--bad);">Bibliothèque PDF non chargée — vérifie ta connexion.</p>`; return; }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+      let lines = [];
+      for(let p=1;p<=pdf.numPages;p++){
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        const pageText = content.items.map(it=>it.str).join(" ");
+        lines.push(...pageText.split(/\n|(?<=\.)\s{2,}/).map(l=>l.trim()).filter(l=>l.length>3));
+      }
+      if(lines.length===0){
+        resultHost.innerHTML = `<p style="font-size:12px;color:var(--bad);">Aucun texte détecté (le PDF est peut-être une image scannée — dans ce cas, saisis les besoins manuellement).</p>`;
+        return;
+      }
+      renderBesoinPdfLines(projectId, lines, fileUrl, fileName);
+    } else {
+      resultHost.innerHTML = `<p style="font-size:12px;color:var(--muted);">Photo importée en pièce jointe. L'extraction automatique du texte n'est disponible que pour les PDF — ajoute les besoins manuellement ci-dessous, le fichier sera joint à la première ligne.</p>
+        <div style="margin-top:10px;"><input id="besoinPdfManualLine" placeholder="Article détecté sur la photo" style="width:100%;margin-bottom:8px;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+        <button class="btn primary sm" onclick="submitBesoinFromPdfLines('${projectId}', [document.getElementById('besoinPdfManualLine').value], '${fileUrl?fileUrl.replace(/'/g,"\\'"):''}', '${esc(fileName)}')">Ajouter ce besoin</button></div>`;
+    }
+  }catch(e){ resultHost.innerHTML = `<p style="font-size:12px;color:var(--bad);">Erreur d'extraction : ${e.message}</p>`; }
+};
+function renderBesoinPdfLines(projectId, lines, fileUrl, fileName){
+  const uniq = [...new Set(lines)].slice(0,60);
+  window._besoinPdfLines = uniq;
+  window._besoinPdfFile = {fileUrl, fileName};
+  $("#besoinPdfResult").innerHTML = `
+    <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">${uniq.length} ligne(s) détectée(s) — coche celles à ajouter comme besoins :</p>
+    <div style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:8px;">
+      ${uniq.map((l,i)=>`<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:12px;border-bottom:1px solid var(--line);">
+        <input type="checkbox" class="besoinLineChk" value="${i}" style="margin-top:3px;">
+        <span>${esc(l)}</span>
+      </label>`).join("")}
+    </div>
+    <button class="btn primary sm" style="margin-top:12px;" onclick="confirmBesoinLinesImport('${projectId}')">Ajouter les lignes cochées comme besoins</button>
+  `;
+}
+window.confirmBesoinLinesImport = async function(projectId){
+  const checked = $$(".besoinLineChk").filter(c=>c.checked).map(c=>window._besoinPdfLines[Number(c.value)]);
+  if(checked.length===0){ toast("Coche au moins une ligne", true); return; }
+  await submitBesoinFromPdfLines(projectId, checked, window._besoinPdfFile.fileUrl, window._besoinPdfFile.fileName);
+};
+window.submitBesoinFromPdfLines = async function(projectId, articles, fileUrl, fileName){
+  articles = articles.filter(Boolean);
+  if(articles.length===0){ toast("Aucun article sélectionné", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const demandeur = $("#besoinPdfDemandeur") ? $("#besoinPdfDemandeur").value.trim() : "";
+  const dateVal = $("#besoinPdfDate") ? $("#besoinPdfDate").value : todayISO();
+  const nouveaux = articles.map((article,i)=>({
+    article, quantite:1, demandeur, date:dateVal||todayISO(), statut:"Identifié",
+    fileUrl: i===0 ? fileUrl : null, fileName: i===0 ? fileName : null
+  }));
+  const besoins = [...(pr.besoins||[]), ...nouveaux];
+  await updateDoc(doc(db,"projects",projectId), {besoins});
+  closeModal(); toast(`${nouveaux.length} besoin(s) ajouté(s) ✓`);
+};
+
+
 // -- Bons de commande --
 function renderBCSection(pr){
   const bcs = pr.bonsCommande || [];
@@ -1562,16 +1789,18 @@ function renderBCSection(pr){
     `<div class="card">${renderBCTable(bcs, pr.id)}</div>`}`;
 }
 function renderBCTable(bcs, projectId){
-  return `<table><thead><tr><th>N°</th><th>Fournisseur</th><th>Montant TTC</th><th>Statut</th></tr></thead><tbody>
+  return `<table><thead><tr><th>N°</th><th>Fournisseur</th><th>Émis le</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead><tbody>
     ${bcs.map((b,i)=>`<tr>
       <td class="mono">${b.numero||'—'}</td>
       <td>${b.fournisseur}</td>
+      <td>${b.dateEmission||b.createdAt||'—'}</td>
       <td>${fmt(b.montantTTC)} ${b.devise||'FCFA'}</td>
       <td>
         <select onchange="updateBCStatut('${projectId}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
           ${BC_STATUTS.map(s=>`<option ${s===b.statut?'selected':''}>${s}</option>`).join("")}
         </select>
       </td>
+      <td>${delBtn(`deleteArrayItem('${projectId}','bonsCommande',${i},'${esc(b.numero||b.fournisseur)}')`)}</td>
     </tr>`).join("")}
   </tbody></table>`;
 }
@@ -1586,7 +1815,8 @@ window.openBCModal = function(projectId){
       <div class="f-field"><label>Montant TTC</label><input type="number" id="bcTTC" value="0"></div>
       <div class="f-field"><label>Devise</label><input id="bcDevise" value="FCFA"></div>
       <div class="f-field"><label>Délai de livraison</label><input id="bcDelai" placeholder="30 jours"></div>
-      <div class="f-field"><label>Date prévue</label><input type="date" id="bcDate"></div>
+      <div class="f-field"><label>Date d'émission (antidatable)</label><input type="date" id="bcDateEmission" value="${todayISO()}"></div>
+      <div class="f-field"><label>Date prévue de livraison</label><input type="date" id="bcDate"></div>
       <div class="f-field"><label>Statut</label><select id="bcStatut">${BC_STATUTS.map(s=>`<option>${s}</option>`).join("")}</select></div>
       <div class="f-field full"><label>Articles</label><textarea id="bcArticles" placeholder="Détail des articles, quantités"></textarea></div>
     </div>
@@ -1600,7 +1830,7 @@ window.submitBC = async function(projectId){
   const bc = {
     numero:$("#bcNum").value.trim(), fournisseur, montantHT:Number($("#bcHT").value||0),
     montantTTC:Number($("#bcTTC").value||0), devise:$("#bcDevise").value.trim()||"FCFA",
-    delaiLivraison:$("#bcDelai").value.trim(), datePrevue:$("#bcDate").value,
+    delaiLivraison:$("#bcDelai").value.trim(), dateEmission:$("#bcDateEmission").value||todayISO(), datePrevue:$("#bcDate").value,
     statut:$("#bcStatut").value, articles:$("#bcArticles").value.trim(), createdAt:todayISO()
   };
   const bonsCommande = [...(pr.bonsCommande||[]), bc];
@@ -1619,13 +1849,14 @@ window.updateBCStatut = async function(projectId, i, val){
   logActivity(projectId, "Achats", `BC ${bonsCommande[i].numero||''} — statut`, ancien, val);
 };
 
+
 // -- Pro forma --
 function renderProforma(pr){
   const list = pr.proforma || [];
   return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openProformaModal('${pr.id}')">${icon('plus')} Nouvelle pro forma</button></div>
   ${list.length===0 ? emptyState("projects","Aucune pro forma","Enregistrez les factures pro forma reçues des fournisseurs.") :
-  `<div class="card"><table><thead><tr><th>N°</th><th>Fournisseur</th><th>Montant</th><th>Validité</th></tr></thead><tbody>
-    ${list.map(p=>`<tr><td class="mono">${p.numero||'—'}</td><td>${p.fournisseur}</td><td>${fmt(p.montant)} ${p.devise||'FCFA'}</td><td>${p.validite||'—'}</td></tr>`).join("")}
+  `<div class="card"><table><thead><tr><th>N°</th><th>Fournisseur</th><th>Montant</th><th>Validité</th><th></th></tr></thead><tbody>
+    ${list.map((p,i)=>`<tr><td class="mono">${p.numero||'—'}</td><td>${p.fournisseur}</td><td>${fmt(p.montant)} ${p.devise||'FCFA'}</td><td>${p.validite||'—'}</td><td>${delBtn(`deleteArrayItem('${pr.id}','proforma',${i},'${esc(p.numero||p.fournisseur)}')`)}</td></tr>`).join("")}
   </tbody></table></div>`}`;
 }
 window.openProformaModal = function(projectId){
@@ -1658,9 +1889,12 @@ function renderFactures(pr){
     <div style="padding:9px 0;border-bottom:1px solid var(--line);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
         <strong style="font-size:13.5px;">${f.numero||'Facture'} — ${f.fournisseur}</strong>
-        <select onchange="updateFactureStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-          ${["À payer","Payée partiellement","Payée"].map(s=>`<option ${s===f.statut?'selected':''}>${s}</option>`).join("")}
-        </select>
+        <div style="display:flex;gap:6px;">
+          <select onchange="updateFactureStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+            ${["À payer","Payée partiellement","Payée"].map(s=>`<option ${s===f.statut?'selected':''}>${s}</option>`).join("")}
+          </select>
+          ${delBtn(`deleteArrayItem('${pr.id}','factures',${i},'${esc(f.numero||f.fournisseur)}')`)}
+        </div>
       </div>
       <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${fmt(f.montant)} ${f.devise||'FCFA'} · échéance ${f.echeance||'—'}</div>
     </div>`).join("")}</div>`}`;
@@ -1698,12 +1932,15 @@ function renderGaranties(pr){
   const list = pr.garanties || [];
   return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openGarantieModal('${pr.id}')">${icon('plus')} Nouvelle garantie</button></div>
   ${list.length===0 ? emptyState("projects","Aucune garantie enregistrée","Enregistrez les garanties fournisseurs sur les équipements.") :
-  `<div class="card">${list.map(g=>{
+  `<div class="card">${list.map((g,i)=>{
     const expiree = g.dateFin && new Date(g.dateFin) < new Date();
     return `<div style="padding:9px 0;border-bottom:1px solid var(--line);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
         <strong style="font-size:13.5px;">${g.equipement}</strong>
-        <span class="pill ${expiree?'bad':'ok'}">${expiree?'Expirée':'Active'}</span>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span class="pill ${expiree?'bad':'ok'}">${expiree?'Expirée':'Active'}</span>
+          ${delBtn(`deleteArrayItem('${pr.id}','garanties',${i},'${esc(g.equipement)}')`)}
+        </div>
       </div>
       <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${g.fournisseur||'—'} · du ${g.dateDebut||'?'} au ${g.dateFin||'?'}</div>
       ${g.conditions?`<div style="font-size:12px;margin-top:4px;">${g.conditions}</div>`:""}
@@ -1760,7 +1997,7 @@ function renderProjectEquipements(pr){
         <td><input type="number" value="${e.installe}" onchange="updateEquipField('${pr.id}',${i},'installe',Number(this.value))" style="width:52px;font-size:12px;padding:4px;border-radius:5px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);"></td>
         <td style="white-space:nowrap;">${fmt(coutTotal)}</td>
         <td><span class="pill ${cls}">${statut}</span></td>
-        <td><button class="btn icon sm" onclick="openEquipEditModal('${pr.id}',${i})">✎</button></td></tr>`;
+        <td><button class="btn icon sm" onclick="openEquipEditModal('${pr.id}',${i})">✎</button> ${delBtn(`deleteArrayItem('${pr.id}','equipements',${i},'${esc(e.nom)}')`)}</td></tr>`;
       }).join("")}
     </tbody></table></div>`}
   `;
@@ -1864,9 +2101,12 @@ function renderProjectLivraisons(pr){
       <div style="padding:10px 0;border-bottom:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <strong style="font-size:13.5px;">${l.equipement}</strong>
-          <select onchange="updateLivraisonStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-            ${LIVRAISON_STATUTS.map(s=>`<option ${s===l.statut?'selected':''}>${s}</option>`).join("")}
-          </select>
+          <div style="display:flex;gap:6px;">
+            <select onchange="updateLivraisonStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+              ${LIVRAISON_STATUTS.map(s=>`<option ${s===l.statut?'selected':''}>${s}</option>`).join("")}
+            </select>
+            ${delBtn(`deleteArrayItem('${pr.id}','livraisons',${i},'${esc(l.equipement)}')`)}
+          </div>
         </div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${l.fournisseur||'—'} · Qté ${l.qteLivree||0}/${l.qteCommandee||0} · prévu ${l.datePrevue||'?'}</div>
       </div>`).join("")}</div>`}
@@ -1918,7 +2158,10 @@ function renderProjectRisques(pr){
       <div style="padding:10px 0;border-bottom:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <strong style="font-size:13.5px;">${r.probleme}</strong>
-          <span class="pill ${r.criticite==='Élevée'?'bad':r.criticite==='Moyenne'?'warn':'neutral'}">${r.criticite}</span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span class="pill ${r.criticite==='Élevée'?'bad':r.criticite==='Moyenne'?'warn':'neutral'}">${r.criticite}</span>
+            ${delBtn(`deleteArrayItem('${pr.id}','risques',${i},'${esc(r.probleme)}')`)}
+          </div>
         </div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${r.categorie||''} · Responsable : ${r.responsable||'—'} · Échéance : ${r.dateLimite||'—'}</div>
         ${r.description?`<div style="font-size:12.5px;margin-top:5px;">${r.description}</div>`:""}
@@ -1993,7 +2236,10 @@ function renderFournisseurs(){
           <strong style="font-size:13.5px;">${s.nom}</strong> <span class="tag-fournisseur">${s.categorie}</span><br>
           <span style="font-size:11.5px;color:var(--muted)">${s.personneContact?s.personneContact+' · ':''}${s.pays||''}</span>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;">${contactButtons(s.telephone, `Bonjour ${s.personneContact||''}, ici ${COMPANY.nom}.`)}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">${contactButtons(s.telephone, `Bonjour ${s.personneContact||''}, ici ${COMPANY.nom}.`)}
+          <button class="btn sm icon" onclick="openEditSupplierModal('${s.id}')" title="Modifier">✎</button>
+          ${delBtn(`deleteSupplier('${s.id}','${esc(s.nom)}')`)}
+        </div>
       </div>`).join("")}</div>`}
   `;
 }
@@ -2022,6 +2268,34 @@ window.submitSupplier = async function(){
     conditions:$("#sCond").value.trim(), createdAt:serverTimestamp()
   });
   closeModal(); toast("Fournisseur ajouté ✓");
+};
+window.openEditSupplierModal = function(supplierId){
+  const s = STATE.suppliers.find(x=>x.id===supplierId);
+  if(!s) return;
+  openModal(`
+    <div class="modal-head"><h3>Modifier le fournisseur</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field full"><label>Nom de l'entreprise</label><input id="esNom" value="${esc(s.nom)}"></div>
+      <div class="f-field"><label>Catégorie</label>
+        <select id="esCat">${["Construction","Électricité","Plomberie","Cuves","Pompes","Génie civil","Architecture","Environnement","Sécurité","Informatique","Mobilier","Transport","Installation","Maintenance","Autres"].map(c=>`<option ${c===s.categorie?'selected':''}>${c}</option>`).join("")}</select>
+      </div>
+      <div class="f-field"><label>Pays</label><input id="esPays" value="${esc(s.pays)}"></div>
+      <div class="f-field"><label>Nom du contact</label><input id="esPersonne" value="${esc(s.personneContact)}"></div>
+      <div class="f-field"><label>Téléphone</label><input id="esTel" type="tel" value="${esc(s.telephone)}"></div>
+      <div class="f-field full"><label>Conditions de paiement</label><input id="esCond" value="${esc(s.conditions)}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitEditSupplier('${supplierId}')">Enregistrer</button></div>
+  `);
+};
+window.submitEditSupplier = async function(supplierId){
+  const nom = $("#esNom").value.trim();
+  if(!nom){ toast("Le nom est requis", true); return; }
+  await updateDoc(doc(db,"suppliers",supplierId), {
+    nom, categorie:$("#esCat").value, pays:$("#esPays").value.trim(),
+    personneContact:$("#esPersonne").value.trim(), telephone:$("#esTel").value.trim(),
+    conditions:$("#esCond").value.trim()
+  });
+  closeModal(); toast("Fournisseur mis à jour ✓");
 };
 
 // -------------------------------------------------------------
@@ -2209,7 +2483,7 @@ function renderUsersTable(){
     ${allUsers.map(u=>{
       const full = ["admin","direction","daf"].includes(u.role);
       const acces = full ? "Tous les modules" : (u.modulesAutorises||[]).length ? `${u.modulesAutorises.length} module(s)` : "Tableau de bord seulement";
-      return `<tr><td>${u.nom||'—'}</td><td>${u.email||'—'}</td><td><span class="pill info">${ROLES[u.role]||u.role}</span></td><td style="font-size:11.5px;color:var(--muted);">${acces} <button class="btn sm ghost" onclick="openEditUserModal('${u.id}')" style="margin-left:6px;">✎</button></td></tr>`;
+      return `<tr><td>${u.nom||'—'}</td><td>${u.email||'—'}</td><td><span class="pill info">${ROLES[u.role]||u.role}</span></td><td style="font-size:11.5px;color:var(--muted);">${acces} <button class="btn sm ghost" onclick="openEditUserModal('${u.id}')" style="margin-left:6px;">✎</button> ${delBtn(`deleteUserAccount('${u.id}','${esc(u.nom)}')`)}</td></tr>`;
     }).join("")}
   </tbody></table>`;
 }
