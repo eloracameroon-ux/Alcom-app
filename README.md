@@ -66,4 +66,12 @@ Une fois déployée, ouvre le lien sur mobile → menu du navigateur → **Ajout
 Dans l'onglet **Rapports**, clique sur **Générer le rapport** d'un projet → la boîte de dialogue d'impression Safari s'ouvre → choisis **Enregistrer au format PDF**.
 
 ## 6. Nouvelle collection Firestore
-Le journal d'historique utilise une nouvelle collection `activityLogs`, couverte par les mêmes règles Firestore que ci-dessus (aucune action supplémentaire nécessaire si les règles ont déjà été collées).
+Le journal d'historique et l'annuaire des contacts utilisent deux nouvelles collections (`activityLogs`, `contacts`), couvertes par les mêmes règles Firestore que ci-dessus (aucune action supplémentaire nécessaire).
+
+## 7. Permissions par module
+Depuis **Paramètres → Utilisateurs**, tu peux maintenant choisir précisément quels modules chaque utilisateur voit (bouton ✎ à côté de son nom). **Administrateur, Direction et DAF ont toujours accès à tout**, sans configuration possible — ce sont les seuls comptes "pleins pouvoirs".
+
+⚠️ **Important à savoir** : cette restriction se fait côté affichage (l'utilisateur ne voit pas les modules non autorisés dans l'application). Ce n'est **pas** une sécurité au niveau de la base de données elle-même — un utilisateur techniquement averti pourrait théoriquement contourner l'interface. Pour une vraie étanchéité des données par rôle, il faudrait des règles Firestore plus poussées (hors du périmètre actuel, faisable plus tard si besoin).
+
+## 8. Appel et WhatsApp direct
+Fournisseurs et responsables ont maintenant un numéro de téléphone cliquable (📞 appelle directement, 💬 ouvre WhatsApp avec un message pré-rempli). Pour les responsables, ajoute leur numéro une fois depuis **Responsables & travaux** — il sera ensuite réutilisé partout, y compris pour les alertes.

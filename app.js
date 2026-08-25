@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-19h30";
+export const BUILD_ID = "2026-08-24-21h00";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -85,6 +85,7 @@ const STATE = {
   projects: [],
   suppliers: [],
   activityLogs: [],
+  contacts: [],
   unsubscribers: []
 };
 
@@ -232,6 +233,7 @@ const NAV_ITEMS = [
   {id:"recherche", label:"Recherche", ic:"search"},
   {id:"comparaison", label:"Comparaison", ic:"rapports"},
   {id:"budget", label:"Budget", ic:"finance"},
+  {id:"depenses", label:"Dépenses", ic:"finance"},
   {id:"responsables", label:"Responsables & travaux", ic:"travaux"},
   {id:"fournisseurs", label:"Fournisseurs", ic:"fournisseurs"},
   {id:"alertes", label:"Alertes", ic:"alertes"},
@@ -243,10 +245,21 @@ const NAV_ITEMS = [
 ];
 const BOTTOM_NAV = ["dashboard","projects","recherche","alertes","parametres"];
 
+function hasFullAccess(){
+  return ["admin","direction","daf"].includes(STATE.profile?.role);
+}
+function allowedNavItems(){
+  if(hasFullAccess() || !STATE.profile) return NAV_ITEMS;
+  const allowed = STATE.profile.modulesAutorises && STATE.profile.modulesAutorises.length
+    ? STATE.profile.modulesAutorises
+    : ["dashboard"]; // par défaut, au minimum le tableau de bord pour éviter un blocage total
+  return NAV_ITEMS.filter(it => allowed.includes(it.id));
+}
 function renderNav(){
   const nav = $("#navScroll");
+  const items = allowedNavItems();
   nav.innerHTML = `<div class="nav-group-label">Navigation</div>` +
-    NAV_ITEMS.map(it => `
+    items.map(it => `
       <div class="nav-item ${STATE.route===it.id?'active':''}" data-route="${it.id}">
         ${icon(it.ic)} ${it.label}
       </div>`).join("") +
@@ -258,7 +271,8 @@ function renderNav(){
   $("#btnLogout").addEventListener("click", ()=> signOut(auth));
 
   const bn = $("#bottomNav");
-  bn.innerHTML = BOTTOM_NAV.map(id=>{
+  const bottomIds = BOTTOM_NAV.filter(id => items.some(it=>it.id===id));
+  bn.innerHTML = bottomIds.map(id=>{
     const it = NAV_ITEMS.find(n=>n.id===id);
     return `<div class="bn-item ${STATE.route===id?'active':''}" data-route="${id}">${icon(it.ic)}<span>${it.label.split(' ')[0]}</span></div>`;
   }).join("");
@@ -266,6 +280,14 @@ function renderNav(){
 }
 
 function goTo(route, opts={}){
+  if(!hasFullAccess() && STATE.profile){
+    const allowed = allowedNavItems().map(it=>it.id);
+    if(!allowed.includes(route)){
+      toast("Accès non autorisé à ce module", true);
+      route = allowed[0] || "dashboard";
+      opts = {};
+    }
+  }
   STATE.route = route;
   STATE.projectId = opts.projectId ?? null;
   STATE.projectTab = opts.projectTab ?? "fiche";
@@ -284,6 +306,7 @@ const TITLES = {
   recherche: ["Recherche globale","Projets, fournisseurs, bons de commande, documents"],
   comparaison: ["Comparaison des projets","Avancement, budget et retards côte à côte"],
   budget: ["Budget","Budget arrêté et ventilation par catégorie, projet par projet"],
+  depenses: ["Dépenses","Tous les mouvements d'argent, projet par projet"],
   responsables: ["Responsables & travaux","Vue transversale sur tous les projets"],
   fournisseurs: ["Fournisseurs & prestataires","Base centralisée"],
   alertes: ["Alertes","Retards, échéances et documents manquants"],
@@ -310,6 +333,7 @@ function render(){
   else if(STATE.route==="recherche") c.innerHTML = renderRecherche();
   else if(STATE.route==="comparaison") c.innerHTML = renderComparaison();
   else if(STATE.route==="budget") c.innerHTML = renderBudgetGlobal();
+  else if(STATE.route==="depenses") c.innerHTML = renderDepenses();
   else if(STATE.route==="responsables") c.innerHTML = renderResponsablesGlobal();
   else if(STATE.route==="fournisseurs") c.innerHTML = renderFournisseurs();
   else if(STATE.route==="alertes") c.innerHTML = renderAlertes();
@@ -494,18 +518,27 @@ function renderResponsablesGlobal(){
     Object.entries(pr.phaseChecklists||{}).forEach(([phase, items])=>{
       (items||[]).forEach(it=> addTask(it.responsable, it.label, phase));
     });
-    (pr.travaux||[]).forEach(t=> addTask(t.nom ? null : null, null, null)); // travaux n'a pas de responsable dédié pour l'instant
     (pr.planning||[]).forEach(t=> addTask(t.responsable, t.nom, "Planning"));
   });
   const personnes = Object.keys(parPersonne).sort();
+  const contacts = STATE.contacts || [];
+  const findContact = nom => contacts.find(c=>c.nom.toLowerCase()===nom.toLowerCase());
 
   const responsablesHtml = personnes.length===0 ? emptyState("projects","Aucun responsable assigné","Les responsables assignés dans les checklists et le planning apparaîtront ici.") :
-    personnes.map(nom=>`<div class="card">
-      <h3>${nom}</h3>
+    personnes.map(nom=>{
+      const c = findContact(nom);
+      return `<div class="card">
+      <div class="section-title">
+        <h3 style="margin:0;">${nom}</h3>
+        <div style="display:flex;gap:6px;align-items:center;">
+          ${c && c.telephone ? contactButtons(c.telephone, `Bonjour ${nom}, ici ${COMPANY.nom}.`) : `<button class="btn sm" onclick="openContactModal('${esc(nom)}')">+ Ajouter le numéro</button>`}
+        </div>
+      </div>
       ${parPersonne[nom].map(t=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;">
         <span>${t.label}</span><span style="color:var(--muted);">${t.projet}${t.source?` · ${t.source}`:''}</span>
       </div>`).join("")}
-    </div>`).join("");
+    </div>`;
+    }).join("");
 
   const fournisseursActifs = {};
   STATE.projects.forEach(pr=>{
@@ -523,6 +556,21 @@ function renderResponsablesGlobal(){
 
   return `<div class="section-title"><h2>Responsables — toutes tâches, tous projets</h2></div>` + responsablesHtml + fournisseursHtml;
 }
+window.openContactModal = function(nomPrerempli){
+  openModal(`<div class="modal-head"><h3>Ajouter un numéro</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field" style="margin-bottom:12px;"><label>Nom</label><input id="ctNom" value="${esc(nomPrerempli||'')}"></div>
+    <div class="f-field"><label>Téléphone</label><input id="ctTel" type="tel" placeholder="6XX XXX XXX"></div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitContact()">Enregistrer</button></div>`);
+};
+window.submitContact = async function(){
+  const nom = $("#ctNom").value.trim();
+  const telephone = $("#ctTel").value.trim();
+  if(!nom || !telephone){ toast("Nom et téléphone requis", true); return; }
+  const existant = (STATE.contacts||[]).find(c=>c.nom.toLowerCase()===nom.toLowerCase());
+  if(existant) await updateDoc(doc(db,"contacts",existant.id), {telephone});
+  else await addDoc(collection(db,"contacts"), {nom, telephone, createdAt:serverTimestamp()});
+  closeModal(); toast("Contact enregistré ✓");
+};
 
 // -------------------------------------------------------------
 // ASSISTANT — questions sur les données du projet (§9)
@@ -747,14 +795,14 @@ function renderDashboard(){
 
   return `
     <div class="kpi-grid">
-      <div class="kpi"><div class="lbl">Projets totaux</div><div class="val">${total}</div><div class="sub">${enCours} en cours · ${termines} terminés</div></div>
-      <div class="kpi"><div class="lbl">Budget total</div><div class="val">${fmt(budgetTotal)}</div><div class="sub">FCFA cumulé</div></div>
-      <div class="kpi"><div class="lbl">Montant engagé</div><div class="val">${fmt(engage)}</div><div class="sub">${budgetTotal? Math.round(engage/budgetTotal*100):0}% du budget</div></div>
-      <div class="kpi accent"><div class="lbl">Montant payé</div><div class="val">${fmt(paye)}</div><div class="sub">Reste à payer : ${fmt(engage-paye)}</div></div>
-      <div class="kpi"><div class="lbl">Documents manquants</div><div class="val" style="color:${docsManquants?'var(--gold)':'var(--ok)'}">${docsManquants}</div></div>
-      <div class="kpi"><div class="lbl">Commandes en attente</div><div class="val">${commandesAttente}</div></div>
-      <div class="kpi"><div class="lbl">Livraisons attendues</div><div class="val">${livraisonsAttendues}</div><div class="sub">${livraisonsRetard} en retard</div></div>
-      <div class="kpi"><div class="lbl">Alertes actives</div><div class="val" style="color:${alerts.length?'var(--red)':'var(--ok)'}">${alerts.length}</div><div class="sub">documents, retards, paiements</div></div>
+      <div class="kpi" style="cursor:pointer;" onclick="goTo('projects')"><div class="lbl">Projets totaux</div><div class="val">${total}</div><div class="sub">${enCours} en cours · ${termines} terminés</div></div>
+      <div class="kpi" style="cursor:pointer;" onclick="goTo('budget')"><div class="lbl">Budget total</div><div class="val">${fmt(budgetTotal)}</div><div class="sub">FCFA cumulé</div></div>
+      <div class="kpi" style="cursor:pointer;" onclick="goTo('depenses')"><div class="lbl">Montant engagé</div><div class="val">${fmt(engage)}</div><div class="sub">${budgetTotal? Math.round(engage/budgetTotal*100):0}% du budget</div></div>
+      <div class="kpi accent" style="cursor:pointer;" onclick="goTo('depenses')"><div class="lbl">Montant payé</div><div class="val">${fmt(paye)}</div><div class="sub">Reste à payer : ${fmt(engage-paye)}</div></div>
+      <div class="kpi" style="cursor:pointer;" onclick="goTo('alertes')"><div class="lbl">Documents manquants</div><div class="val" style="color:${docsManquants?'var(--gold)':'var(--ok)'}">${docsManquants}</div></div>
+      <div class="kpi" style="cursor:pointer;" onclick="goTo('alertes')"><div class="lbl">Commandes en attente</div><div class="val">${commandesAttente}</div></div>
+      <div class="kpi" style="cursor:pointer;" onclick="goTo('alertes')"><div class="lbl">Livraisons attendues</div><div class="val">${livraisonsAttendues}</div><div class="sub">${livraisonsRetard} en retard</div></div>
+      <div class="kpi" style="cursor:pointer;" onclick="goTo('alertes')"><div class="lbl">Alertes actives</div><div class="val" style="color:${alerts.length?'var(--red)':'var(--ok)'}">${alerts.length}</div><div class="sub">documents, retards, paiements</div></div>
     </div>
 
     <div class="grid-2">
@@ -858,17 +906,25 @@ function computeAlerts(){
       }
     });
   });
-  return alerts;
+  return alerts.map(a=>{
+    const pr = STATE.projects.find(p=>a.text.startsWith(p.nom));
+    return {...a, projet: pr?pr.nom:"", responsable: pr?pr.responsable:""};
+  });
 }
 
 function renderAlertes(){
   const alerts = computeAlerts();
   if(alerts.length===0) return emptyState("alertes","Aucune alerte","Tous les projets sont à jour : aucun retard, aucun document manquant détecté.");
-  return `<div class="card">${alerts.map(a=>`
-    <div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);align-items:flex-start;">
+  return `<div class="card">${alerts.map(a=>{
+    const contact = a.responsable ? (STATE.contacts||[]).find(c=>c.nom.toLowerCase()===a.responsable.toLowerCase()) : null;
+    const phone = contact ? contact.telephone : "";
+    const msg = `Bonjour${a.responsable?' '+a.responsable:''}, ${COMPANY.nom} — alerte "${a.type}" sur ${a.projet||'un projet'} : ${a.text.replace((a.projet||'')+' — ','')}. Merci de traiter au plus vite.`;
+    return `<div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);align-items:flex-start;">
       <span class="pill ${a.level}" style="flex-shrink:0;">${a.type}</span>
-      <div style="font-size:13.5px;">${a.text}</div>
-    </div>`).join("")}</div>`;
+      <div style="flex:1;font-size:13.5px;">${a.text}${a.responsable?`<br><span style="font-size:11px;color:var(--muted);">Responsable : ${a.responsable}</span>`:''}</div>
+      <a href="${waLink(phone, msg)}" target="_blank" class="btn sm icon" style="text-decoration:none;flex-shrink:0;" title="Alerter via WhatsApp">💬</a>
+    </div>`;
+  }).join("")}</div>`;
 }
 
 // -------------------------------------------------------------
@@ -1196,6 +1252,7 @@ window.updatePhaseItem = async function(projectId, phase, ii, field, val){
 
 function renderProjectFinance(pr){
   const engage = Number(pr.montantEngage||0), paye = Number(pr.montantPaye||0), budget = Number(pr.budgetInitial||0);
+  const paiements = (pr.paiements||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||""));
   return `
     <div class="kpi-grid">
       <div class="kpi"><div class="lbl">Budget initial</div><div class="val">${fmt(budget)}</div></div>
@@ -1207,10 +1264,62 @@ function renderProjectFinance(pr){
       <h3>Écart budgétaire</h3>
       <div class="progress-track" style="height:12px;margin-bottom:8px;"><div class="progress-fill" style="width:${budget?Math.min(100,engage/budget*100):0}%"></div></div>
       <p style="font-size:12.5px;color:var(--muted)">${engage>budget?`⚠️ Dépassement de budget de ${fmt(engage-budget)} FCFA`:`Budget disponible : ${fmt(budget-engage)} FCFA`}</p>
-      <button class="btn sm" onclick="openEditProjectModal('${pr.id}')">Mettre à jour les montants</button>
+      <button class="btn sm" onclick="openEditProjectModal('${pr.id}')">Mettre à jour le budget/engagé</button>
+    </div>
+    <div class="card">
+      <div class="section-title"><h3 style="margin:0;">Mouvements d'argent</h3><button class="btn primary sm" onclick="openPaiementModal('${pr.id}')">${icon('plus')} Enregistrer un paiement</button></div>
+      ${paiements.length===0 ? `<p style="font-size:12.5px;color:var(--muted);">Aucun paiement enregistré.</p>` :
+        paiements.map(p=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px;">
+          <span>${p.date} · ${p.moyen}${p.reference?` · ${p.reference}`:''}${p.description?` · ${p.description}`:''}</span>
+          <strong>${fmt(p.montant)} FCFA</strong>
+        </div>`).join("")}
     </div>
   `;
 }
+window.openPaiementModal = function(projectId){
+  openModal(`<div class="modal-head"><h3>Enregistrer un paiement</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Montant (FCFA)</label><input type="number" id="pmMontant" value="0"></div>
+      <div class="f-field"><label>Date</label><input type="date" id="pmDate" value="${todayISO()}"></div>
+      <div class="f-field"><label>Moyen de paiement</label><select id="pmMoyen"><option>Orange Money</option><option>MTN Mobile Money</option><option>Virement bancaire</option><option>Chèque</option><option>Espèces</option></select></div>
+      <div class="f-field"><label>Référence</label><input id="pmRef" placeholder="N° transaction"></div>
+      <div class="f-field full"><label>Description</label><input id="pmDesc" placeholder="Ex : avance sur BC cuves"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitPaiement('${projectId}')">Enregistrer</button></div>`);
+};
+window.submitPaiement = async function(projectId){
+  const montant = Number($("#pmMontant").value||0);
+  if(montant<=0){ toast("Le montant doit être supérieur à 0", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const paiement = {montant, date:$("#pmDate").value||todayISO(), moyen:$("#pmMoyen").value, reference:$("#pmRef").value.trim(), description:$("#pmDesc").value.trim()};
+  const paiements = [...(pr.paiements||[]), paiement];
+  const montantPaye = (Number(pr.montantPaye)||0) + montant;
+  await updateDoc(doc(db,"projects",projectId), {paiements, montantPaye});
+  logActivity(projectId, "Finance", "Paiement enregistré", "", `${fmt(montant)} FCFA (${paiement.moyen})`);
+  closeModal(); toast("Paiement enregistré ✓");
+};
+
+// -------------------------------------------------------------
+// DÉPENSES — tous les mouvements d'argent, tous projets confondus
+// -------------------------------------------------------------
+function renderDepenses(){
+  const tous = [];
+  STATE.projects.forEach(pr=>{
+    (pr.paiements||[]).forEach(p=> tous.push({...p, projet:pr.nom, projectId:pr.id}));
+  });
+  tous.sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const total = tous.reduce((s,p)=>s+(Number(p.montant)||0),0);
+  if(tous.length===0) return emptyState("projects","Aucune dépense enregistrée","Enregistre un paiement depuis l'onglet Finance d'un projet pour le voir apparaître ici.");
+  return `
+    <div class="kpi-grid"><div class="kpi accent"><div class="lbl">Total des mouvements enregistrés</div><div class="val">${fmt(total)}</div><div class="sub">FCFA, tous projets</div></div></div>
+    <div class="card">${tous.map(p=>`
+      <div class="rowlink" onclick="goTo('projects',{projectId:'${p.projectId}',projectTab:'finance'})" style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer;">
+        <span><strong>${p.projet}</strong><br><span style="color:var(--muted);">${p.date} · ${p.moyen}${p.description?` · ${p.description}`:''}</span></span>
+        <strong style="flex-shrink:0;">${fmt(p.montant)} FCFA</strong>
+      </div>`).join("")}</div>
+  `;
+}
+
 
 function renderProjectDocuments(pr){
   const docs = pr.documents || [];
@@ -1844,6 +1953,32 @@ window.submitRisque = async function(projectId){
 
 function esc(s){ return (s||"").replace(/"/g,'&quot;'); }
 
+// Normalise un numéro camerounais pour tel:/wa.me (accepte 6XXXXXXXX, 06XX, +237..., 237...)
+function normalizePhone(raw){
+  if(!raw) return "";
+  let n = String(raw).replace(/[\s.\-()]/g,"");
+  if(n.startsWith("+")) n = n.slice(1);
+  if(n.startsWith("00")) n = n.slice(2);
+  if(n.startsWith("0")) n = "237" + n.slice(1);
+  if(!n.startsWith("237") && n.length===9) n = "237" + n;
+  return n;
+}
+function telLink(raw){
+  const n = normalizePhone(raw);
+  return n ? `tel:+${n}` : "";
+}
+function waLink(raw, message){
+  const n = normalizePhone(raw);
+  const txt = encodeURIComponent(message||"");
+  return n ? `https://wa.me/${n}?text=${txt}` : `https://wa.me/?text=${txt}`;
+}
+function contactButtons(phone, waMessage){
+  if(!phone) return `<span style="font-size:11px;color:var(--muted);">Aucun contact</span>`;
+  return `<a href="${telLink(phone)}" class="btn sm icon" style="text-decoration:none;" title="Appeler">📞</a>
+    <a href="${waLink(phone, waMessage||'')}" target="_blank" class="btn sm icon" style="text-decoration:none;" title="WhatsApp">💬</a>`;
+}
+
+
 // -------------------------------------------------------------
 // FOURNISSEURS
 // -------------------------------------------------------------
@@ -1852,21 +1987,27 @@ function renderFournisseurs(){
   return `
     <div class="section-title"><div></div><button class="btn primary" onclick="openSupplierModal()">${icon('plus')} Nouveau fournisseur</button></div>
     ${list.length===0 ? emptyState("projects","Aucun fournisseur","Ajoutez vos fournisseurs et prestataires : construction, cuves, pompes, électricité...") :
-    `<div class="card"><table><thead><tr><th>Nom</th><th>Catégorie</th><th>Pays</th><th>Contact</th></tr></thead><tbody>
-      ${list.map(s=>`<tr><td><strong>${s.nom}</strong></td><td><span class="tag-fournisseur">${s.categorie}</span></td><td>${s.pays||'—'}</td><td>${s.contact||'—'}</td></tr>`).join("")}
-    </tbody></table></div>`}
+    `<div class="card">${list.map(s=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);gap:10px;">
+        <div style="min-width:0;">
+          <strong style="font-size:13.5px;">${s.nom}</strong> <span class="tag-fournisseur">${s.categorie}</span><br>
+          <span style="font-size:11.5px;color:var(--muted)">${s.personneContact?s.personneContact+' · ':''}${s.pays||''}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">${contactButtons(s.telephone, `Bonjour ${s.personneContact||''}, ici ${COMPANY.nom}.`)}</div>
+      </div>`).join("")}</div>`}
   `;
 }
 window.openSupplierModal = function(){
   openModal(`
     <div class="modal-head"><h3>Nouveau fournisseur</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="form-grid">
-      <div class="f-field full"><label>Nom *</label><input id="sNom" placeholder="Nom du fournisseur"></div>
+      <div class="f-field full"><label>Nom de l'entreprise *</label><input id="sNom" placeholder="Nom du fournisseur"></div>
       <div class="f-field"><label>Catégorie</label>
         <select id="sCat">${["Construction","Électricité","Plomberie","Cuves","Pompes","Génie civil","Architecture","Environnement","Sécurité","Informatique","Mobilier","Transport","Installation","Maintenance","Autres"].map(c=>`<option>${c}</option>`).join("")}</select>
       </div>
       <div class="f-field"><label>Pays</label><input id="sPays" placeholder="Cameroun"></div>
-      <div class="f-field full"><label>Contact (téléphone / e-mail)</label><input id="sContact" placeholder="+237 6xx xxx xxx"></div>
+      <div class="f-field"><label>Nom du contact</label><input id="sPersonne" placeholder="Nom et prénom"></div>
+      <div class="f-field"><label>Téléphone</label><input id="sTel" placeholder="6XX XXX XXX" type="tel"></div>
       <div class="f-field full"><label>Conditions de paiement</label><input id="sCond" placeholder="30% avance, solde à livraison"></div>
     </div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitSupplier()">Créer</button></div>
@@ -1877,7 +2018,8 @@ window.submitSupplier = async function(){
   if(!nom){ toast("Le nom est requis", true); return; }
   await addDoc(collection(db,"suppliers"), {
     nom, categorie:$("#sCat").value, pays:$("#sPays").value.trim(),
-    contact:$("#sContact").value.trim(), conditions:$("#sCond").value.trim(), createdAt:serverTimestamp()
+    personneContact:$("#sPersonne").value.trim(), telephone:$("#sTel").value.trim(),
+    conditions:$("#sCond").value.trim(), createdAt:serverTimestamp()
   });
   closeModal(); toast("Fournisseur ajouté ✓");
 };
@@ -2063,9 +2205,22 @@ function renderParametres(){
 }
 function renderUsersTable(){
   if(allUsers.length===0) return `<p style="font-size:13px;color:var(--muted)">Chargement…</p>`;
-  return `<table><thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th></tr></thead><tbody>
-    ${allUsers.map(u=>`<tr><td>${u.nom||'—'}</td><td>${u.email||'—'}</td><td><span class="pill info">${ROLES[u.role]||u.role}</span></td></tr>`).join("")}
+  return `<table><thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Accès</th></tr></thead><tbody>
+    ${allUsers.map(u=>{
+      const full = ["admin","direction","daf"].includes(u.role);
+      const acces = full ? "Tous les modules" : (u.modulesAutorises||[]).length ? `${u.modulesAutorises.length} module(s)` : "Tableau de bord seulement";
+      return `<tr><td>${u.nom||'—'}</td><td>${u.email||'—'}</td><td><span class="pill info">${ROLES[u.role]||u.role}</span></td><td style="font-size:11.5px;color:var(--muted);">${acces} <button class="btn sm ghost" onclick="openEditUserModal('${u.id}')" style="margin-left:6px;">✎</button></td></tr>`;
+    }).join("")}
   </tbody></table>`;
+}
+function moduleCheckboxes(selected){
+  const modules = NAV_ITEMS.filter(it=>it.id!=="parametres");
+  selected = selected || [];
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;padding:4px 0;">
+    ${modules.map(it=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;background:var(--paper-3);padding:6px 9px;border-radius:8px;border:1px solid var(--line);cursor:pointer;">
+      <input type="checkbox" value="${it.id}" ${selected.includes(it.id)?'checked':''} class="modChk"> ${it.label}
+    </label>`).join("")}
+  </div>`;
 }
 window.openUserModal = function(){
   openModal(`
@@ -2073,8 +2228,12 @@ window.openUserModal = function(){
     <div class="f-field" style="margin-bottom:12px;"><label>Nom complet</label><input id="uNom" placeholder="Nom et prénom"></div>
     <div class="f-field" style="margin-bottom:12px;"><label>E-mail</label><input id="uEmail" type="email" placeholder="prenom.nom@alcompetroleum.com"></div>
     <div class="f-field" style="margin-bottom:12px;"><label>Mot de passe temporaire</label><input id="uPass" type="text" placeholder="Min. 6 caractères"></div>
-    <div class="f-field"><label>Rôle</label>
-      <select id="uRole">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select>
+    <div class="f-field" style="margin-bottom:12px;"><label>Rôle</label>
+      <select id="uRole" onchange="document.getElementById('uModulesWrap').style.display=(this.value==='admin'||this.value==='direction'||this.value==='daf')?'none':'block'">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${k==='consultation'?'selected':''}>${v}</option>`).join("")}</select>
+    </div>
+    <div id="uModulesWrap">
+      <label style="display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:6px;">Modules accessibles (Administrateur, Direction et DAF ont automatiquement accès à tout)</label>
+      ${moduleCheckboxes(["dashboard"])}
     </div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitNewUser()">Créer le compte</button></div>
   `);
@@ -2082,12 +2241,37 @@ window.openUserModal = function(){
 window.submitNewUser = async function(){
   const nom = $("#uNom").value.trim(), email = $("#uEmail").value.trim(), pass = $("#uPass").value, role = $("#uRole").value;
   if(!nom || !email || pass.length<6){ toast("Vérifiez les champs (mot de passe ≥ 6 caractères)", true); return; }
+  const modulesAutorises = $$(".modChk").filter(c=>c.checked).map(c=>c.value);
   try{
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, pass);
-    await setDoc(doc(db,"users",cred.user.uid), {nom, email, role, actif:true, createdAt:serverTimestamp()});
+    await setDoc(doc(db,"users",cred.user.uid), {nom, email, role, actif:true, modulesAutorises, createdAt:serverTimestamp()});
     await signOut(secondaryAuth);
     closeModal(); toast("Utilisateur créé ✓");
   }catch(e){ toast("Erreur : "+e.message, true); }
+};
+window.openEditUserModal = function(userId){
+  const u = allUsers.find(x=>x.id===userId);
+  if(!u) return;
+  const full = ["admin","direction","daf"].includes(u.role);
+  openModal(`
+    <div class="modal-head"><h3>Modifier l'accès — ${esc(u.nom)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field" style="margin-bottom:12px;"><label>Rôle</label>
+      <select id="euRole" onchange="document.getElementById('euModulesWrap').style.display=(this.value==='admin'||this.value==='direction'||this.value==='daf')?'none':'block'">
+        ${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${k===u.role?'selected':''}>${v}</option>`).join("")}
+      </select>
+    </div>
+    <div id="euModulesWrap" style="${full?'display:none;':''}">
+      <label style="display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:6px;">Modules accessibles</label>
+      ${moduleCheckboxes(u.modulesAutorises||["dashboard"])}
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitEditUser('${userId}')">Enregistrer</button></div>
+  `);
+};
+window.submitEditUser = async function(userId){
+  const role = $("#euRole").value;
+  const modulesAutorises = $$(".modChk").filter(c=>c.checked).map(c=>c.value);
+  await updateDoc(doc(db,"users",userId), {role, modulesAutorises});
+  closeModal(); toast("Accès mis à jour ✓");
 };
 
 // -------------------------------------------------------------
@@ -2201,6 +2385,12 @@ function subscribeData(){
     if(STATE.route==="historique") render();
   }, err=>console.error(err));
   STATE.unsubscribers.push(unsub4);
+
+  const unsub5 = onSnapshot(collection(db,"contacts"), snap=>{
+    STATE.contacts = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(STATE.route==="responsables") render();
+  }, err=>console.error(err));
+  STATE.unsubscribers.push(unsub5);
 }
 
 // PWA service worker
