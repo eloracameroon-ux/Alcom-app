@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-25-00h05";
+export const BUILD_ID = "2026-08-25-00h20";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -2672,7 +2672,8 @@ window.submitImportRapport = async function(projectId){
 // -------------------------------------------------------------
 function printDocument(title, subtitle, bodyHtml){
   const now = new Date();
-  document.getElementById("printReportArea").innerHTML = `
+  const area = document.getElementById("printReportArea");
+  area.innerHTML = `
     <div class="letterhead">
       <img src="assets/logo.jpeg" alt="logo">
       <div class="lh-info">
@@ -2691,8 +2692,15 @@ function printDocument(title, subtitle, bodyHtml){
       <span>${COMPANY.nui}</span>
     </div>
   `;
-  document.getElementById("printReportArea").style.display = "block";
-  setTimeout(()=>{ window.print(); document.getElementById("printReportArea").style.display = "none"; }, 100);
+  area.style.display = "block";
+  // IMPORTANT : window.print() doit être appelé de façon SYNCHRONE dans le
+  // gestionnaire de clic — Safari iOS bloque silencieusement l'impression
+  // si elle est déclenchée après un délai (setTimeout), même court.
+  window.print();
+  window.onafterprint = () => { area.style.display = "none"; };
+  // Filet de sécurité : si l'événement afterprint ne se déclenche pas
+  // (certains navigateurs), on masque quand même après un délai généreux.
+  setTimeout(()=>{ if(area.style.display==="block") area.style.display = "none"; }, 4000);
 }
 
 window.printProjectReport = function(projectId){
