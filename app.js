@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-23h30";
+export const BUILD_ID = "2026-08-25-00h05";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -2614,7 +2614,15 @@ window.submitEditSupplier = async function(supplierId){
 // -------------------------------------------------------------
 function renderRapports(){
   if(STATE.projects.length===0) return emptyState("projects","Aucun rapport disponible","Créez un projet pour générer des rapports.");
-  return STATE.projects.map(pr=>{
+  return `
+    <div class="section-title">
+      <div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn gold sm" onclick="printMultiProjectReport()">📄 Rapport — tous les projets</button>
+        <button class="btn sm" onclick="openMultiReportModal()">☑️ Choisir les projets…</button>
+      </div>
+    </div>
+  ` + STATE.projects.map(pr=>{
     const rapports = pr.rapportsDocs || [];
     return `<div class="card">
       <div class="section-title"><h3 style="margin:0;">${pr.nom}</h3>
@@ -2690,6 +2698,12 @@ function printDocument(title, subtitle, bodyHtml){
 window.printProjectReport = function(projectId){
   const pr = STATE.projects.find(p=>p.id===projectId);
   if(!pr) return;
+  printDocument(`Rapport de projet — ${pr.nom}`, `Code projet : ${pr.code||'—'}`, buildProjectReportBody(pr));
+};
+
+// Construit le contenu HTML du rapport d'un seul projet — réutilisé pour un rapport
+// individuel ou intégré dans un rapport groupé couvrant plusieurs/tous les projets.
+function buildProjectReportBody(pr, isGrouped){
   const idx = PROJECT_STATUTS.indexOf(pr.statut);
   const avance = Math.round(((idx+1)/PROJECT_STATUTS.length)*100);
   const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
@@ -2745,7 +2759,12 @@ window.printProjectReport = function(projectId){
   const alertsHtml = alertsProjet.length===0 ? `<p style="font-size:12px;color:#2E7D32;">Aucune alerte active.</p>` :
     alertsProjet.map(a=>`<div class="report-row"><span>${a.type}</span><strong>${a.text.replace(pr.nom+' — ','')}</strong></div>`).join("");
 
-  const bodyHtml = `
+  const titre = isGrouped
+    ? `<h3 style="margin:${isGrouped==='first'?'0':'34px'} 0 4px;border-top:${isGrouped==='first'?'none':'2px solid #E4241B'};padding-top:${isGrouped==='first'?'0':'20px'};">${pr.nom} <span style="font-size:11px;color:#888;font-weight:400;">(${pr.code||'—'})</span></h3>`
+    : "";
+
+  return `
+    ${titre}
     <div class="report-section">
       <h4>Informations générales</h4>
       <div class="report-row"><span>Localisation</span><strong>${pr.ville||'—'}, ${pr.pays||'—'}</strong></div>
@@ -2773,7 +2792,38 @@ window.printProjectReport = function(projectId){
     <div class="report-section"><h4>Alertes</h4>${alertsHtml}</div>
     <div class="report-section"><h4>Risques & blocages</h4>${risquesHtml}</div>
   `;
-  printDocument(`Rapport de projet — ${pr.nom}`, `Code projet : ${pr.code||'—'}`, bodyHtml);
+}
+
+// Génère un rapport PDF couvrant plusieurs (ou tous les) projets à la fois,
+// chaque projet démarrant sur une nouvelle page à l'impression.
+window.printMultiProjectReport = function(projectIds){
+  const list = projectIds && projectIds.length ? STATE.projects.filter(p=>projectIds.includes(p.id)) : STATE.projects;
+  if(list.length===0){ toast("Aucun projet sélectionné", true); return; }
+  const bodyHtml = list.map((pr,i)=>`<div style="${i>0?'page-break-before:always;':''}">${buildProjectReportBody(pr, i===0?'first':'next')}</div>`).join("");
+  printDocument(
+    list.length===1 ? `Rapport de projet — ${list[0].nom}` : `Rapport consolidé — ${list.length} projets`,
+    list.length===1 ? `Code projet : ${list[0].code||'—'}` : list.map(p=>p.nom).join(", "),
+    bodyHtml
+  );
+};
+window.openMultiReportModal = function(){
+  openModal(`<div class="modal-head"><h3>Générer un rapport groupé</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Coche les projets à inclure dans un seul PDF (un projet par page).</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px;">
+      <button class="btn sm ghost" onclick="$$('.reportProjChk').forEach(c=>c.checked=true)">Tout cocher</button>
+      <button class="btn sm ghost" onclick="$$('.reportProjChk').forEach(c=>c.checked=false)">Tout décocher</button>
+    </div>
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:8px;">
+      ${STATE.projects.map(p=>`<label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:13px;border-bottom:1px solid var(--line);">
+        <input type="checkbox" class="reportProjChk" value="${p.id}" checked> ${p.nom}
+      </label>`).join("")}
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitMultiReport()">Générer le PDF</button></div>`);
+};
+window.submitMultiReport = function(){
+  const ids = $$(".reportProjChk").filter(c=>c.checked).map(c=>c.value);
+  closeModal();
+  printMultiProjectReport(ids);
 };
 
 // -------------------------------------------------------------
