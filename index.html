@@ -250,7 +250,8 @@ tr.rowlink:hover{background:var(--paper-3);}
 .report-section{margin-bottom:18px;}
 .report-section h4{font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:#B01813; border-bottom:1px solid #ddd; padding-bottom:6px; margin-bottom:10px;}
 .report-row{display:flex; justify-content:space-between; padding:5px 0; font-size:12.5px; border-bottom:1px solid #f0f0f0; color:#111;}
-.report-footer{margin-top:30px; padding-top:14px; border-top:1px solid #ddd; font-size:10px; color:#888; text-align:center;}
+.report-footer-band{margin-top:36px; background:linear-gradient(90deg,#E4241B,#F0A81C); color:#fff; padding:12px 18px; border-radius:8px; display:flex; flex-wrap:wrap; gap:14px; justify-content:space-between; font-size:10px; font-weight:600;}
+.report-footer-band span{display:inline-flex; align-items:center; gap:5px; white-space:nowrap;}
 @media print{
   body *{visibility:hidden;}
   #printReportArea, #printReportArea *{visibility:visible;}
@@ -329,6 +330,6 @@ tr.rowlink:hover{background:var(--paper-3);}
 <div class="toast-host" id="toastHost"></div>
 <div id="printReportArea" style="display:none;"></div>
 
-<script type="module" src="app.js?v=14"></script>
+<script type="module" src="app.js?v=15"></script>
 </body>
 </html>

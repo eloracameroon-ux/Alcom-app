@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-24-22h15";
+export const BUILD_ID = "2026-08-24-23h30";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -86,6 +86,7 @@ const STATE = {
   suppliers: [],
   activityLogs: [],
   contacts: [],
+  stock: [],
   unsubscribers: []
 };
 
@@ -104,9 +105,12 @@ const PROJECT_STATUTS = ["Études","Travaux préparatoires","Achats de matériel
 // Informations légales de l'entreprise pour le papier en-tête des rapports
 const COMPANY = {
   nom: "ALCOM PETROLEUM",
-  bp: "B.P: 2470",
-  rc: "RC: CM/DLA/012024/B15/00002",
-  nui: "NUI: M062416842044H"
+  bp: "BP 2470, Immeuble Louna, Bonapriso, Douala",
+  rc: "RCCM : CM-DLA-01-2024-B15-00002",
+  nui: "NUI : M062416842044H",
+  tel: "+237 6 96 71 41 86",
+  email: "contact@alcompetroleum.com",
+  site: "www.alcompetroleum.com"
 };
 
 // -------------------------------------------------------------
@@ -240,6 +244,8 @@ const NAV_ITEMS = [
   {id:"assistant", label:"Assistant", ic:"documents"},
   {id:"rapports", label:"Rapports", ic:"rapports"},
   {id:"historique", label:"Historique", ic:"planning"},
+  {id:"documentation", label:"Documentation", ic:"documents"},
+  {id:"stock", label:"Stock", ic:"equipements"},
   {id:"importexport", label:"Import / Export", ic:"achats"},
   {id:"parametres", label:"Paramètres", ic:"parametres"}
 ];
@@ -420,6 +426,8 @@ const TITLES = {
   assistant: ["Assistant documentaire","Questions sur les données du projet, réponses tracées à la source"],
   rapports: ["Rapports","Synthèses par projet et par direction"],
   historique: ["Historique","Traçabilité des actions et modifications"],
+  documentation: ["Documentation","Tous les documents, tous projets, catégorisés"],
+  stock: ["Stock","Magasin — équipements et matériel en stock"],
   importexport: ["Import / Export","Fournisseurs, équipements et rapports en Excel/CSV"],
   parametres: ["Paramètres","Utilisateurs, rôles et configuration"]
 };
@@ -447,6 +455,8 @@ function render(){
   else if(STATE.route==="assistant") c.innerHTML = renderAssistant();
   else if(STATE.route==="rapports") c.innerHTML = renderRapports();
   else if(STATE.route==="historique") c.innerHTML = renderHistorique();
+  else if(STATE.route==="documentation") c.innerHTML = renderDocumentation();
+  else if(STATE.route==="stock") c.innerHTML = renderStock();
   else if(STATE.route==="importexport") c.innerHTML = renderImportExport();
   else if(STATE.route==="parametres") c.innerHTML = renderParametres();
   bindContentEvents();
@@ -511,7 +521,7 @@ function renderComparaison(){
     <select onchange="setComparaisonFilter('statut',this.value)" style="font-size:12.5px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
       <option value="">Toutes phases</option>${PROJECT_STATUTS.map(s=>`<option ${f.statut===s?'selected':''}>${s}</option>`).join("")}
     </select>
-    <button class="btn sm" onclick="exportComparaisonExcel()">📊 Exporter en Excel</button>
+    <button class="btn sm" onclick="exportComparaisonExcel()">📄 Exporter en PDF</button>
   </div>`;
 
   const table = `<div class="card"><table><thead><tr><th>Projet</th><th>Pays</th><th>Ville</th><th>Responsable</th><th>Avancement</th><th>Budget</th><th>Engagé</th><th>Payé</th><th>Reste</th><th>Retard</th></tr></thead><tbody>
@@ -541,20 +551,13 @@ window.setComparaisonFilter = function(field, val){
   render();
 };
 window.exportComparaisonExcel = function(){
-  if(typeof XLSX==="undefined"){ toast("Bibliothèque Excel non chargée — vérifie ta connexion", true); return; }
   const rows = STATE.projects.map(pr=>{
     const idx = PROJECT_STATUTS.indexOf(pr.statut);
-    return {
-      Projet: pr.nom, Code: pr.code||"", Pays: pr.pays||"", Ville: pr.ville||"", Responsable: pr.responsable||"",
-      Statut: pr.statut, "Avancement %": Math.round(((idx+1)/PROJECT_STATUTS.length)*100),
-      "Budget initial": pr.budgetInitial||0, "Montant engagé": pr.montantEngage||0, "Montant payé": pr.montantPaye||0,
-      "Reste à payer": (pr.montantEngage||0)-(pr.montantPaye||0)
-    };
-  });
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Comparaison");
-  XLSX.writeFile(wb, `Alcom_Petroleum_Comparaison_${todayISO()}.xlsx`);
+    const avance = Math.round(((idx+1)/PROJECT_STATUTS.length)*100);
+    return `<tr><td>${pr.nom}</td><td>${pr.pays||'—'}</td><td>${pr.ville||'—'}</td><td>${pr.responsable||'—'}</td><td>${pr.statut}</td><td>${avance}%</td><td>${fmt(pr.budgetInitial)}</td><td>${fmt(pr.montantEngage)}</td><td>${fmt(pr.montantPaye)}</td><td>${fmt((pr.montantEngage||0)-(pr.montantPaye||0))}</td></tr>`;
+  }).join("");
+  const bodyHtml = `<div class="report-section"><table><thead><tr><th>Projet</th><th>Pays</th><th>Ville</th><th>Responsable</th><th>Phase</th><th>Avancement</th><th>Budget</th><th>Engagé</th><th>Payé</th><th>Reste</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  printDocument("Comparaison des projets", `${STATE.projects.length} projet(s)`, bodyHtml);
 };
 
 // -------------------------------------------------------------
@@ -567,6 +570,7 @@ function renderBudgetGlobal(){
   const totalEngage = STATE.projects.reduce((s,p)=>s+(Number(p.montantEngage)||0),0);
   const totalPaye = STATE.projects.reduce((s,p)=>s+(Number(p.montantPaye)||0),0);
   return `
+    <div class="section-title"><div></div><button class="btn sm" onclick="exportBudgetPdf()">📄 Exporter en PDF</button></div>
     <div class="kpi-grid">
       <div class="kpi"><div class="lbl">Budget total (tous projets)</div><div class="val">${fmt(totalBudget)}</div></div>
       <div class="kpi"><div class="lbl">Engagé total</div><div class="val">${fmt(totalEngage)}</div></div>
@@ -574,7 +578,8 @@ function renderBudgetGlobal(){
     </div>
     ${STATE.projects.map(pr=>{
       const bl = pr.budgetLines || {};
-      const totalVentile = BUDGET_CATEGORIES.reduce((s,c)=>s+(Number(bl[c])||0),0);
+      const toutesCategories = [...new Set([...BUDGET_CATEGORIES, ...Object.keys(bl)])];
+      const totalVentile = toutesCategories.reduce((s,c)=>s+(Number(bl[c])||0),0);
       const ecart = (Number(pr.budgetInitial)||0) - (Number(pr.montantEngage)||0);
       return `<div class="card">
         <div class="section-title"><h3 style="margin:0;">${pr.nom}</h3><button class="btn sm" onclick="openBudgetLinesModal('${pr.id}')">Modifier la ventilation</button></div>
@@ -585,7 +590,7 @@ function renderBudgetGlobal(){
         ${infoRow("Écart budgétaire", `${ecart>=0?'':'⚠️ '}${fmtXAF(ecart)}`)}
         <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px;">
           <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Ventilation par catégorie ${totalVentile>0?`(${fmt(totalVentile)} ventilé)`:''}</div>
-          ${BUDGET_CATEGORIES.filter(c=>Number(bl[c])>0).map(c=>`
+          ${toutesCategories.filter(c=>Number(bl[c])>0).map(c=>`
             <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px;">
               <span style="color:var(--muted);">${c}</span><span>${fmt(bl[c])}</span>
             </div>`).join("") || `<p style="font-size:12px;color:var(--muted);">Pas encore ventilé.</p>`}
@@ -594,18 +599,38 @@ function renderBudgetGlobal(){
     }).join("")}
   `;
 }
+window.exportBudgetPdf = function(){
+  const rows = STATE.projects.map(pr=>`<tr><td>${pr.nom}</td><td>${fmt(pr.budgetInitial)}</td><td>${fmt(pr.montantEngage)}</td><td>${fmt(pr.montantPaye)}</td><td>${fmt((Number(pr.budgetInitial)||0)-(Number(pr.montantEngage)||0))}</td></tr>`).join("");
+  const bodyHtml = `<div class="report-section"><table><thead><tr><th>Projet</th><th>Budget initial</th><th>Engagé</th><th>Payé</th><th>Écart</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  printDocument("Budget — vue d'ensemble", `${STATE.projects.length} projet(s)`, bodyHtml);
+};
 window.openBudgetLinesModal = function(projectId){
   const pr = STATE.projects.find(p=>p.id===projectId);
   const bl = pr.budgetLines || {};
+  const toutesCategories = [...new Set([...BUDGET_CATEGORIES, ...Object.keys(bl)])];
   openModal(`<div class="modal-head"><h3>Ventilation du budget</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="form-grid">
-      ${BUDGET_CATEGORIES.map(c=>`<div class="f-field"><label>${c}</label><input type="number" id="bl_${c.replace(/\s/g,'')}" value="${bl[c]||0}"></div>`).join("")}
+    <div class="form-grid" id="budgetLinesGrid">
+      ${toutesCategories.map(c=>`<div class="f-field"><label>${c}</label><input type="number" class="blInput" data-cat="${esc(c)}" value="${bl[c]||0}"></div>`).join("")}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <input id="blNewCat" placeholder="Nouvelle catégorie…" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+      <button class="btn sm" onclick="addBudgetCategory()">+ Ajouter</button>
     </div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitBudgetLines('${projectId}')">Enregistrer</button></div>`);
 };
+window.addBudgetCategory = function(){
+  const nom = $("#blNewCat").value.trim();
+  if(!nom) return;
+  const grid = $("#budgetLinesGrid");
+  const div = document.createElement("div");
+  div.className = "f-field";
+  div.innerHTML = `<label>${esc(nom)}</label><input type="number" class="blInput" data-cat="${esc(nom)}" value="0">`;
+  grid.appendChild(div);
+  $("#blNewCat").value = "";
+};
 window.submitBudgetLines = async function(projectId){
   const budgetLines = {};
-  BUDGET_CATEGORIES.forEach(c=>{ budgetLines[c] = Number($(`#bl_${c.replace(/\s/g,'')}`).value||0); });
+  $$(".blInput").forEach(inp=>{ budgetLines[inp.dataset.cat] = Number(inp.value||0); });
   await updateDoc(doc(db,"projects",projectId), {budgetLines});
   closeModal(); toast("Ventilation budgétaire enregistrée ✓");
 };
@@ -768,30 +793,176 @@ window.askAssistant = function(){
 function renderHistorique(){
   const logs = STATE.activityLogs || [];
   if(logs.length===0) return emptyState("alertes","Aucune activité enregistrée","Les modifications importantes apparaîtront ici au fur et à mesure.");
-  return `<div class="card">${logs.map(l=>`
-    <div style="padding:10px 0;border-bottom:1px solid var(--line);">
-      <div style="display:flex;justify-content:space-between;gap:10px;">
+  return `
+    ${hasFullAccess() ? `<div class="section-title"><div></div><button class="btn sm" style="color:var(--bad);" onclick="clearHistorique()">🗑️ Vider tout l'historique</button></div>` : ""}
+    <div class="card">${logs.map(l=>`
+    <div style="display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);">
+      <div style="min-width:0;">
         <strong style="font-size:13px;">${l.action}</strong>
-        <span style="font-size:11px;color:var(--muted);">${l.createdAt && l.createdAt.toDate ? l.createdAt.toDate().toLocaleString('fr-FR') : ''}</span>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">
+          ${l.projectNom?`${l.projectNom} · `:''}${l.categorie} · par ${l.user}
+          ${l.ancienneValeur||l.nouvelleValeur ? ` · ${esc(l.ancienneValeur)} → ${esc(l.nouvelleValeur)}` : ''}
+        </div>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px;">
-        ${l.projectNom?`${l.projectNom} · `:''}${l.categorie} · par ${l.user}
-        ${l.ancienneValeur||l.nouvelleValeur ? ` · ${esc(l.ancienneValeur)} → ${esc(l.nouvelleValeur)}` : ''}
+      <div style="display:flex;gap:8px;align-items:flex-start;flex-shrink:0;">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${l.createdAt && l.createdAt.toDate ? l.createdAt.toDate().toLocaleString('fr-FR') : ''}</span>
+        ${delBtn(`deleteHistoriqueEntry('${l.id}')`)}
       </div>
     </div>`).join("")}</div>`;
 }
+window.deleteHistoriqueEntry = async function(logId){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm("Supprimer cette entrée d'historique ?")) return;
+  await deleteDoc(doc(db,"activityLogs",logId));
+  toast("Entrée supprimée ✓");
+};
+window.clearHistorique = async function(){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm(`Supprimer définitivement les ${STATE.activityLogs.length} entrées de l'historique ? Cette action est irréversible.`)) return;
+  toast("Suppression en cours…");
+  for(const l of STATE.activityLogs){
+    await deleteDoc(doc(db,"activityLogs",l.id));
+  }
+  toast("Historique vidé ✓");
+};
 
 // -------------------------------------------------------------
 // IMPORT / EXPORT — Excel / CSV (§27)
 // -------------------------------------------------------------
+// -------------------------------------------------------------
+// DOCUMENTATION — tous les documents, tous projets, catégorisés
+// -------------------------------------------------------------
+function renderDocumentation(){
+  const filtre = STATE.docFilter || "";
+  const tous = [];
+  STATE.projects.forEach(pr=>{
+    (pr.documents||[]).forEach(d=> tous.push({...d, projet:pr.nom, projectId:pr.id}));
+    (pr.besoins||[]).forEach(b=>{ if(b.fileUrl) tous.push({nom:b.article, type:"Expression de besoin", statut:b.statut, date:b.date, fileUrl:b.fileUrl, fileName:b.fileName, projet:pr.nom, projectId:pr.id}); });
+    (pr.bonsCommande||[]).forEach(b=>{ if(b.fileUrl) tous.push({nom:b.numero||"Bon de commande", type:"Bon de commande", statut:b.statut, date:b.dateEmission, fileUrl:b.fileUrl, fileName:b.fileName, projet:pr.nom, projectId:pr.id}); });
+    (pr.factures||[]).forEach(f=>{ if(f.fileUrl) tous.push({nom:f.numero||"Facture", type:"Facture", statut:f.statut, date:f.echeance, fileUrl:f.fileUrl, fileName:f.fileName, projet:pr.nom, projectId:pr.id}); });
+    (pr.proforma||[]).forEach(p=>{ if(p.fileUrl) tous.push({nom:p.numero||"Pro forma", type:"Pro forma", statut:"", date:p.validite, fileUrl:p.fileUrl, fileName:p.fileName, projet:pr.nom, projectId:pr.id}); });
+    (pr.rapportsDocs||[]).forEach(r=> tous.push({nom:r.nom, type:"Rapport", statut:"", date:r.date, fileUrl:r.fileUrl, fileName:r.fileName, projet:pr.nom, projectId:pr.id}));
+  });
+  const categories = [...new Set(tous.map(d=>d.type))].sort();
+  const filtres = tous.filter(d=> !filtre || d.type===filtre);
+  filtres.sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+
+  const chips = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;">
+    <div onclick="setDocFilter('')" class="pill ${!filtre?'bad':'neutral'}" style="cursor:pointer;white-space:nowrap;flex-shrink:0;">Tout (${tous.length})</div>
+    ${categories.map(c=>`<div onclick="setDocFilter('${esc(c)}')" class="pill ${filtre===c?'bad':'neutral'}" style="cursor:pointer;white-space:nowrap;flex-shrink:0;">${c} (${tous.filter(d=>d.type===c).length})</div>`).join("")}
+  </div>`;
+
+  if(tous.length===0) return chips + emptyState("projects","Aucun document","Les documents ajoutés dans les projets (documents, besoins, BC, factures, pro forma, rapports) apparaîtront ici automatiquement.");
+
+  return chips + `<div class="card">${filtres.map(d=>`
+    <div class="rowlink" onclick="goTo('projects',{projectId:'${d.projectId}',projectTab:'documents'})" style="display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer;">
+      <div style="min-width:0;">
+        <strong style="font-size:13.5px;">${d.nom}</strong><br>
+        <span style="font-size:11.5px;color:var(--muted);">${d.projet} · ${d.date||'—'}${d.statut?` · ${d.statut}`:''}</span>
+        ${d.fileUrl?`<br><a class="doc-link" href="${d.fileUrl}" download="${esc(d.fileName||d.nom)}" target="_blank" onclick="event.stopPropagation()">📎 ${d.fileName||'Ouvrir'}</a>`:''}
+      </div>
+      <span class="pill info" style="flex-shrink:0;">${d.type}</span>
+    </div>`).join("")}</div>`;
+}
+window.setDocFilter = function(cat){ STATE.docFilter = cat; render(); };
+
+// -------------------------------------------------------------
+// STOCK — magasin : équipements et matériel disponibles (hors projets)
+// groupes électrogènes, extincteurs, etc. avec suivi des entrées/sorties.
+// -------------------------------------------------------------
+function renderStock(){
+  const list = STATE.stock || [];
+  return `
+    <div class="section-title"><div></div><button class="btn primary sm" onclick="openStockItemModal()">${icon('plus')} Nouvel article</button></div>
+    ${list.length===0 ? emptyState("projects","Stock vide","Ajoute les équipements et matériel disponibles au magasin : groupes électrogènes, extincteurs, cuves de réserve…") :
+    `<div class="card">${list.map(s=>{
+      const bas = s.seuilAlerte && Number(s.quantite) <= Number(s.seuilAlerte);
+      return `<div style="padding:11px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <div>
+            <strong style="font-size:13.5px;">${s.nom}</strong> <span class="tag-fournisseur">${s.categorie||''}</span><br>
+            <span style="font-size:11.5px;color:var(--muted);">${s.emplacement||'—'}</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+            <span class="pill ${bas?'bad':'ok'}">${s.quantite} ${s.unite||'u.'}</span>
+            ${delBtn(`deleteStockItem('${s.id}','${esc(s.nom)}')`)}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn sm" onclick="openStockMovementModal('${s.id}','Entrée')">+ Entrée</button>
+          <button class="btn sm" onclick="openStockMovementModal('${s.id}','Sortie')">− Sortie</button>
+          <button class="btn sm ghost" onclick="toggleStockHistory('${s.id}')">Historique</button>
+        </div>
+        <div id="stockHist_${s.id}" style="display:none;margin-top:8px;">
+          ${(s.mouvements||[]).slice().reverse().map(m=>`<div style="font-size:11.5px;color:var(--muted);padding:3px 0;">${m.date} · ${m.type} ${m.quantite} ${s.unite||'u.'} ${m.motif?`— ${m.motif}`:''}</div>`).join("") || `<p style="font-size:11.5px;color:var(--muted);">Aucun mouvement.</p>`}
+        </div>
+      </div>`;
+    }).join("")}</div>`}
+  `;
+}
+window.toggleStockHistory = function(id){
+  const el = document.getElementById("stockHist_"+id);
+  if(el) el.style.display = el.style.display==="none" ? "block" : "none";
+};
+window.openStockItemModal = function(){
+  openModal(`<div class="modal-head"><h3>Nouvel article de stock</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field full"><label>Nom de l'article</label><input id="stNom" placeholder="Groupe électrogène 20 kVA"></div>
+      <div class="f-field"><label>Catégorie</label><input id="stCat" placeholder="Électrique, sécurité…"></div>
+      <div class="f-field"><label>Unité</label><input id="stUnite" placeholder="unité, litre, carton…" value="unité"></div>
+      <div class="f-field"><label>Quantité initiale</label><input type="number" id="stQte" value="0"></div>
+      <div class="f-field"><label>Seuil d'alerte</label><input type="number" id="stSeuil" value="0"></div>
+      <div class="f-field"><label>Emplacement</label><input id="stEmpl" placeholder="Magasin Douala"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitStockItem()">Créer</button></div>`);
+};
+window.submitStockItem = async function(){
+  const nom = $("#stNom").value.trim();
+  if(!nom){ toast("Le nom est requis", true); return; }
+  await addDoc(collection(db,"stock"), {
+    nom, categorie:$("#stCat").value.trim(), unite:$("#stUnite").value.trim()||"unité",
+    quantite:Number($("#stQte").value||0), seuilAlerte:Number($("#stSeuil").value||0),
+    emplacement:$("#stEmpl").value.trim(), mouvements:[], createdAt:serverTimestamp()
+  });
+  closeModal(); toast("Article créé ✓");
+};
+window.deleteStockItem = async function(stockId, nom){
+  if(!hasFullAccess()){ toast("Accès réservé aux administrateurs", true); return; }
+  if(!confirm(`Supprimer l'article "${nom}" du stock ?`)) return;
+  await deleteDoc(doc(db,"stock",stockId));
+  toast("Article supprimé ✓");
+};
+window.openStockMovementModal = function(stockId, type){
+  openModal(`<div class="modal-head"><h3>${type} de stock</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="f-field"><label>Quantité</label><input type="number" id="smQte" value="1"></div>
+      <div class="f-field"><label>Date</label><input type="date" id="smDate" value="${todayISO()}"></div>
+      <div class="f-field full"><label>Motif / destination</label><input id="smMotif" placeholder="${type==='Sortie'?'Ex : Station Douala 2':'Ex : Achat fournisseur X'}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitStockMovement('${stockId}','${type}')">Enregistrer</button></div>`);
+};
+window.submitStockMovement = async function(stockId, type){
+  const qte = Number($("#smQte").value||0);
+  if(qte<=0){ toast("La quantité doit être supérieure à 0", true); return; }
+  const item = (STATE.stock||[]).find(s=>s.id===stockId);
+  if(!item) return;
+  const nouvelleQte = type==="Entrée" ? (Number(item.quantite)||0)+qte : (Number(item.quantite)||0)-qte;
+  if(nouvelleQte<0){ toast("Stock insuffisant pour cette sortie", true); return; }
+  const mouvements = [...(item.mouvements||[]), {type, quantite:qte, date:$("#smDate").value||todayISO(), motif:$("#smMotif").value.trim()}];
+  await updateDoc(doc(db,"stock",stockId), {quantite:nouvelleQte, mouvements});
+  logActivity(null, "Stock", `${type} — ${item.nom}`, "", `${qte} ${item.unite||'u.'}`);
+  closeModal(); toast("Mouvement enregistré ✓");
+};
+
+
 function renderImportExport(){
   return `
     <div class="card">
       <h3>Export</h3>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Génère un fichier Excel prêt à partager.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Génère un PDF avec le papier en-tête et pied de page de l'entreprise, prêt à partager.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn gold sm" onclick="exportComparaisonExcel()">📊 Comparaison des projets</button>
-        <button class="btn gold sm" onclick="exportFournisseursExcel()">📊 Fournisseurs</button>
+        <button class="btn gold sm" onclick="exportComparaisonExcel()">📄 Comparaison des projets (PDF)</button>
+        <button class="btn gold sm" onclick="exportFournisseursExcel()">📄 Fournisseurs (PDF)</button>
       </div>
     </div>
     <div class="card">
@@ -812,12 +983,9 @@ function renderImportExport(){
   `;
 }
 window.exportFournisseursExcel = function(){
-  if(typeof XLSX==="undefined"){ toast("Bibliothèque Excel non chargée", true); return; }
-  const rows = STATE.suppliers.map(s=>({Nom:s.nom, Catégorie:s.categorie, Pays:s.pays||"", Contact:s.contact||"", Conditions:s.conditions||""}));
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Fournisseurs");
-  XLSX.writeFile(wb, `Alcom_Petroleum_Fournisseurs_${todayISO()}.xlsx`);
+  const rows = STATE.suppliers.map(s=>`<tr><td>${s.nom}</td><td>${s.categorie}</td><td>${s.pays||'—'}</td><td>${s.personneContact||'—'}</td><td>${s.telephone||'—'}</td></tr>`).join("");
+  const bodyHtml = `<div class="report-section"><table><thead><tr><th>Nom</th><th>Catégorie</th><th>Pays</th><th>Contact</th><th>Téléphone</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  printDocument("Fournisseurs & prestataires", `${STATE.suppliers.length} fournisseur(s)`, bodyHtml);
 };
 window.importFournisseursExcel = function(){
   const file = $("#importFournisseursFile").files[0];
@@ -893,11 +1061,9 @@ function renderDashboard(){
   const enCours = p.filter(pr=>pr.statut!=="Mise en service").length;
   const termines = p.filter(pr=>pr.statut==="Mise en service").length;
   const alerts = computeAlerts();
-  let docsManquants=0, commandesAttente=0, livraisonsAttendues=0, livraisonsRetard=0;
+  let docsManquants=0;
   p.forEach(pr=>{
     Object.values(pr.phaseChecklists||{}).forEach(items=>(items||[]).forEach(it=>{ if(it.valide!==undefined && it.valide!=="Oui" && it.requis==="Oui") docsManquants++; }));
-    (pr.bonsCommande||[]).forEach(b=>{ if(["Brouillon","En validation","Validé"].includes(b.statut)) commandesAttente++; });
-    (pr.livraisons||[]).forEach(l=>{ if(l.statut==="À venir"||l.statut==="En transit") livraisonsAttendues++; if(l.statut==="Retard") livraisonsRetard++; });
   });
 
   return `
@@ -907,8 +1073,6 @@ function renderDashboard(){
       <div class="kpi" style="cursor:pointer;" onclick="goTo('depenses')"><div class="lbl">Montant engagé</div><div class="val">${fmt(engage)}</div><div class="sub">${budgetTotal? Math.round(engage/budgetTotal*100):0}% du budget</div></div>
       <div class="kpi accent" style="cursor:pointer;" onclick="goTo('depenses')"><div class="lbl">Montant payé</div><div class="val">${fmt(paye)}</div><div class="sub">Reste à payer : ${fmt(engage-paye)}</div></div>
       <div class="kpi" style="cursor:pointer;" onclick="goTo('alertes')"><div class="lbl">Documents manquants</div><div class="val" style="color:${docsManquants?'var(--gold)':'var(--ok)'}">${docsManquants}</div></div>
-      <div class="kpi" style="cursor:pointer;" onclick="goTo('alertes')"><div class="lbl">Commandes en attente</div><div class="val">${commandesAttente}</div></div>
-      <div class="kpi" style="cursor:pointer;" onclick="goTo('alertes')"><div class="lbl">Livraisons attendues</div><div class="val">${livraisonsAttendues}</div><div class="sub">${livraisonsRetard} en retard</div></div>
       <div class="kpi" style="cursor:pointer;" onclick="goTo('alertes')"><div class="lbl">Alertes actives</div><div class="val" style="color:${alerts.length?'var(--red)':'var(--ok)'}">${alerts.length}</div><div class="sub">documents, retards, paiements</div></div>
     </div>
 
@@ -1012,6 +1176,11 @@ function computeAlerts(){
         if(j>=0 && j<=7) alerts.push({type:"Livraison proche", level:"warn", text:`${pr.nom} — ${l.equipement} prévue dans ${j} j.`});
       }
     });
+  });
+  (STATE.stock||[]).forEach(s=>{
+    if(s.seuilAlerte && Number(s.quantite) <= Number(s.seuilAlerte)){
+      alerts.push({type:"Stock bas", level:"warn", text:`Stock — ${s.nom} : ${s.quantite} ${s.unite||'u.'} restant(s).`});
+    }
   });
   return alerts.map(a=>{
     const pr = STATE.projects.find(p=>a.text.startsWith(p.nom));
@@ -1584,13 +1753,17 @@ function renderProjectTravaux(pr){
       </div>
       <div class="progress-track" style="height:10px;"><div class="progress-fill" style="width:${avgAvance}%"></div></div>
     </div>
+    <div class="section-title"><div></div><button class="btn primary sm" onclick="openAddTravauxModal('${pr.id}')">${icon('plus')} Ajouter une tâche</button></div>
     <div class="card">${travaux.map((t,i)=>`
       <div style="padding:10px 0;border-bottom:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <strong style="font-size:13.5px;">${t.nom}</strong>
-          <select onchange="updateTravauxStatut('${pr.id}',${i},this.value)" style="font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-            ${["Non commencé","En cours","Terminé","Bloqué"].map(s=>`<option ${s===t.statut?'selected':''}>${s}</option>`).join("")}
-          </select>
+          <div style="display:flex;gap:6px;">
+            <select onchange="updateTravauxStatut('${pr.id}',${i},this.value)" style="font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+              ${["Non commencé","En cours","Terminé","Bloqué"].map(s=>`<option ${s===t.statut?'selected':''}>${s}</option>`).join("")}
+            </select>
+            ${delBtn(`deleteArrayItem('${pr.id}','travaux',${i},'${esc(t.nom)}')`)}
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
           <input type="range" min="0" max="100" value="${t.avancement||0}" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updateTravauxAvancement('${pr.id}',${i},this.value)" style="flex:1;">
@@ -1603,6 +1776,19 @@ window.initTravaux = async function(projectId){
   const travaux = TRAVAUX_TEMPLATE.map(nom=>({nom, statut:"Non commencé", avancement:0}));
   await updateDoc(doc(db,"projects",projectId), {travaux});
   toast("Checklist chantier initialisée ✓");
+};
+window.openAddTravauxModal = function(projectId){
+  openModal(`<div class="modal-head"><h3>Ajouter une tâche</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="f-field"><label>Nom de la tâche</label><input id="tvNom" placeholder="Ex : Pose du carrelage boutique"></div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitAddTravaux('${projectId}')">Ajouter</button></div>`);
+};
+window.submitAddTravaux = async function(projectId){
+  const nom = $("#tvNom").value.trim();
+  if(!nom){ toast("Le nom est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const travaux = [...(pr.travaux||[]), {nom, statut:"Non commencé", avancement:0}];
+  await updateDoc(doc(db,"projects",projectId), {travaux});
+  closeModal(); toast("Tâche ajoutée ✓");
 };
 window.updateTravauxStatut = async function(projectId, i, val){
   const pr = STATE.projects.find(p=>p.id===projectId);
@@ -1696,19 +1882,64 @@ window.updateBesoinStatut = async function(projectId, i, val){
   await updateDoc(doc(db,"projects",projectId), {besoins});
 };
 
-// -- Import d'une expression de besoin (PDF) avec extraction de texte assistée --
+// -- Import de document (PDF) avec extraction de texte assistée --
 // Remarque honnête : il ne s'agit pas d'une IA qui comprend le document, mais d'une
-// extraction du texte brut (pdf.js) + sélection manuelle des lignes pertinentes.
-// Bien plus fiable qu'un remplissage automatique qui pourrait se tromper.
+// extraction du texte brut (pdf.js) + reconnaissance de motifs simples (numéro, montants),
+// le tout entièrement modifiable et effaçable avant enregistrement.
+async function extractPdfText(file){
+  if(typeof pdfjsLib === "undefined") throw new Error("Bibliothèque PDF non chargée — vérifie ta connexion.");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+  let fullText = "";
+  const lineGroups = [];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    // Regroupe les items par ligne approximative (même coordonnée Y)
+    const byY = {};
+    content.items.forEach(it=>{
+      const y = Math.round(it.transform[5]);
+      if(!byY[y]) byY[y] = [];
+      byY[y].push(it.str);
+    });
+    const ys = Object.keys(byY).map(Number).sort((a,b)=>b-a);
+    ys.forEach(y=>{ const line = byY[y].join(" ").replace(/\s+/g," ").trim(); if(line) lineGroups.push(line); });
+    fullText += content.items.map(it=>it.str).join(" ") + "\n";
+  }
+  return {fullText, lines: lineGroups};
+}
+// Isole une désignation + quantité probable dans une ligne de tableau
+// (heuristique : la quantité est le plus petit nombre isolé en fin de ligne,
+// les montants étant généralement plus grands). Toujours modifiable ensuite.
+function parseDesignationQty(line){
+  const m = line.match(/^(.*?)((?:\s+\d[\d\s]{0,12}\d|\s+\d){1,6})\s*$/);
+  if(!m) return {designation: line.trim(), quantite: 1};
+  const designation = m[1].trim();
+  const tokens = m[2].trim().split(/\s+/).map(Number).filter(n=>!isNaN(n));
+  if(tokens.length===0) return {designation: line.trim(), quantite: 1};
+  const petits = tokens.filter(n=>n>0 && n<1000);
+  const qty = petits.length ? Math.min(...petits) : tokens[0];
+  return {designation: designation || line.trim(), quantite: qty||1};
+}
+// Cherche une valeur après une étiquette connue (N°, FOURNISSEUR, TOTAL TTC…)
+function extractField(text, patterns){
+  for(const p of patterns){
+    const m = text.match(p);
+    if(m && m[1]) return m[1].trim();
+  }
+  return "";
+}
+
 window.openBesoinPdfModal = function(projectId){
   openModal(`<div class="modal-head"><h3>Importer une expression de besoin</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Choisis un PDF ou une photo. Le texte est extrait automatiquement — coche ensuite les lignes qui correspondent à des articles à ajouter comme besoins.</p>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Choisis un PDF. La désignation et la quantité de chaque ligne sont détectées automatiquement — tu peux ensuite tout corriger ou supprimer avant d'enregistrer.</p>
     <input type="file" id="besoinPdfFile" accept=".pdf,image/*" style="margin-bottom:10px;">
     <div class="form-grid" style="margin-bottom:10px;">
       <div class="f-field"><label>Demandeur</label><input id="besoinPdfDemandeur"></div>
       <div class="f-field"><label>Date</label><input type="date" id="besoinPdfDate" value="${todayISO()}"></div>
     </div>
-    <button class="btn sm" onclick="extractBesoinPdf('${projectId}')">Extraire le texte</button>
+    <button class="btn sm" onclick="extractBesoinPdf('${projectId}')">Extraire</button>
     <div id="besoinPdfResult" style="margin-top:14px;"></div>
   `);
 };
@@ -1720,59 +1951,58 @@ window.extractBesoinPdf = async function(projectId){
   try{
     let fileUrl = null, fileName = file.name;
     if(file.size <= 720000){ fileUrl = await fileToBase64(file); }
-
-    if(file.type === "application/pdf"){
-      if(typeof pdfjsLib === "undefined"){ resultHost.innerHTML = `<p style="font-size:12px;color:var(--bad);">Bibliothèque PDF non chargée — vérifie ta connexion.</p>`; return; }
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-      const buf = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({data:buf}).promise;
-      let lines = [];
-      for(let p=1;p<=pdf.numPages;p++){
-        const page = await pdf.getPage(p);
-        const content = await page.getTextContent();
-        const pageText = content.items.map(it=>it.str).join(" ");
-        lines.push(...pageText.split(/\n|(?<=\.)\s{2,}/).map(l=>l.trim()).filter(l=>l.length>3));
-      }
-      if(lines.length===0){
-        resultHost.innerHTML = `<p style="font-size:12px;color:var(--bad);">Aucun texte détecté (le PDF est peut-être une image scannée — dans ce cas, saisis les besoins manuellement).</p>`;
-        return;
-      }
-      renderBesoinPdfLines(projectId, lines, fileUrl, fileName);
-    } else {
-      resultHost.innerHTML = `<p style="font-size:12px;color:var(--muted);">Photo importée en pièce jointe. L'extraction automatique du texte n'est disponible que pour les PDF — ajoute les besoins manuellement ci-dessous, le fichier sera joint à la première ligne.</p>
-        <div style="margin-top:10px;"><input id="besoinPdfManualLine" placeholder="Article détecté sur la photo" style="width:100%;margin-bottom:8px;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-        <button class="btn primary sm" onclick="submitBesoinFromPdfLines('${projectId}', [document.getElementById('besoinPdfManualLine').value], '${fileUrl?fileUrl.replace(/'/g,"\\'"):''}', '${esc(fileName)}')">Ajouter ce besoin</button></div>`;
+    if(file.type !== "application/pdf"){
+      resultHost.innerHTML = `<p style="font-size:12px;color:var(--muted);">Photo importée en pièce jointe (l'extraction automatique n'est disponible que pour les PDF texte). Ajoute le besoin manuellement, le fichier restera joint.</p>
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <input id="besoinPdfManualLine" placeholder="Article" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          <input id="besoinPdfManualQty" type="number" value="1" style="width:70px;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+          <button class="btn primary sm" onclick="submitBesoinFromPdfLines('${projectId}', [{designation:document.getElementById('besoinPdfManualLine').value, quantite:Number(document.getElementById('besoinPdfManualQty').value||1)}], '${fileUrl?fileUrl.replace(/'/g,"\\'"):''}', '${esc(fileName)}')">Ajouter</button>
+        </div>`;
+      return;
     }
+    const {lines} = await extractPdfText(file);
+    const uniq = [...new Set(lines)].filter(l=>l.length>3).slice(0,80);
+    if(uniq.length===0){
+      resultHost.innerHTML = `<p style="font-size:12px;color:var(--bad);">Aucun texte détecté (PDF scanné ?). Saisis les besoins manuellement.</p>`;
+      return;
+    }
+    const parsed = uniq.map(parseDesignationQty);
+    window._besoinPdfLines = parsed;
+    window._besoinPdfFile = {fileUrl, fileName};
+    resultHost.innerHTML = `
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">${parsed.length} ligne(s) détectée(s) — corrige désignation/quantité, décoche ou supprime ce qui n'est pas pertinent :</p>
+      <div id="besoinPdfLinesWrap" style="max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:8px;">
+        ${parsed.map((p,i)=>besoinLineRow(p,i)).join("")}
+      </div>
+      <button class="btn primary sm" style="margin-top:12px;" onclick="confirmBesoinLinesImport('${projectId}')">Ajouter les lignes cochées comme besoins</button>
+    `;
   }catch(e){ resultHost.innerHTML = `<p style="font-size:12px;color:var(--bad);">Erreur d'extraction : ${e.message}</p>`; }
 };
-function renderBesoinPdfLines(projectId, lines, fileUrl, fileName){
-  const uniq = [...new Set(lines)].slice(0,60);
-  window._besoinPdfLines = uniq;
-  window._besoinPdfFile = {fileUrl, fileName};
-  $("#besoinPdfResult").innerHTML = `
-    <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">${uniq.length} ligne(s) détectée(s) — coche celles à ajouter comme besoins :</p>
-    <div style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:8px;">
-      ${uniq.map((l,i)=>`<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:12px;border-bottom:1px solid var(--line);">
-        <input type="checkbox" class="besoinLineChk" value="${i}" style="margin-top:3px;">
-        <span>${esc(l)}</span>
-      </label>`).join("")}
-    </div>
-    <button class="btn primary sm" style="margin-top:12px;" onclick="confirmBesoinLinesImport('${projectId}')">Ajouter les lignes cochées comme besoins</button>
-  `;
+function besoinLineRow(p, i){
+  return `<div class="besoinLineRow" data-idx="${i}" style="display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);">
+    <input type="checkbox" class="besoinLineChk" checked style="flex-shrink:0;">
+    <input class="besoinLineDesig" value="${esc(p.designation)}" style="flex:1;min-width:0;font-size:12px;padding:6px 7px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+    <input type="number" class="besoinLineQty" value="${p.quantite}" style="width:60px;font-size:12px;padding:6px 7px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+    <button class="btn sm icon" onclick="this.closest('.besoinLineRow').remove()" title="Supprimer cette ligne">✕</button>
+  </div>`;
 }
 window.confirmBesoinLinesImport = async function(projectId){
-  const checked = $$(".besoinLineChk").filter(c=>c.checked).map(c=>window._besoinPdfLines[Number(c.value)]);
-  if(checked.length===0){ toast("Coche au moins une ligne", true); return; }
-  await submitBesoinFromPdfLines(projectId, checked, window._besoinPdfFile.fileUrl, window._besoinPdfFile.fileName);
+  const rows = $$(".besoinLineRow").filter(r=>r.querySelector(".besoinLineChk").checked);
+  const lignes = rows.map(r=>({
+    designation: r.querySelector(".besoinLineDesig").value.trim(),
+    quantite: Number(r.querySelector(".besoinLineQty").value||1)
+  })).filter(l=>l.designation);
+  if(lignes.length===0){ toast("Aucune ligne sélectionnée", true); return; }
+  await submitBesoinFromPdfLines(projectId, lignes, window._besoinPdfFile.fileUrl, window._besoinPdfFile.fileName);
 };
-window.submitBesoinFromPdfLines = async function(projectId, articles, fileUrl, fileName){
-  articles = articles.filter(Boolean);
-  if(articles.length===0){ toast("Aucun article sélectionné", true); return; }
+window.submitBesoinFromPdfLines = async function(projectId, lignes, fileUrl, fileName){
+  lignes = lignes.filter(l=>l.designation);
+  if(lignes.length===0){ toast("Aucun article", true); return; }
   const pr = STATE.projects.find(p=>p.id===projectId);
   const demandeur = $("#besoinPdfDemandeur") ? $("#besoinPdfDemandeur").value.trim() : "";
   const dateVal = $("#besoinPdfDate") ? $("#besoinPdfDate").value : todayISO();
-  const nouveaux = articles.map((article,i)=>({
-    article, quantite:1, demandeur, date:dateVal||todayISO(), statut:"Identifié",
+  const nouveaux = lignes.map((l,i)=>({
+    article:l.designation, quantite:l.quantite||1, demandeur, date:dateVal||todayISO(), statut:"Identifié",
     fileUrl: i===0 ? fileUrl : null, fileName: i===0 ? fileName : null
   }));
   const besoins = [...(pr.besoins||[]), ...nouveaux];
@@ -1780,11 +2010,86 @@ window.submitBesoinFromPdfLines = async function(projectId, articles, fileUrl, f
   closeModal(); toast(`${nouveaux.length} besoin(s) ajouté(s) ✓`);
 };
 
+// -- Import PDF pour pré-remplir Bon de commande / Pro forma / Facture --
+window.openImportDocForBC = async function(projectId){
+  const file = await pickPdfFile();
+  if(!file) return;
+  toast("Extraction en cours…");
+  try{
+    let fileUrl = null;
+    if(file.size <= 720000) fileUrl = await fileToBase64(file);
+    const {fullText} = await extractPdfText(file);
+    const numero = extractField(fullText, [/N°\s*:?\s*([A-Z0-9/.\-]+)/i, /BON DE COMMANDE\s*N°?\s*([A-Z0-9/.\-]+)/i]);
+    const fournisseur = extractField(fullText, [/FOURNISSEUR\s*:\s*([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü0-9 &'\-]{2,40})/]);
+    const montantHT = extractField(fullText, [/Montant\s*HT\s*([\d\s]{3,})/i, /Total\s*remis[ée]\s*([\d\s]{3,})/i]);
+    const montantTTC = extractField(fullText, [/TOTAL\s*TTC\s*([\d\s]{3,})/i]);
+    const delai = extractField(fullText, [/D[ée]lai\s*de\s*r[ée]alisation\s*:?\s*([^\n]{2,30})/i]);
+    openBCModal(projectId);
+    setTimeout(()=>{
+      if(numero) $("#bcNum").value = numero.trim();
+      if(fournisseur) $("#bcFourn").value = fournisseur.trim();
+      if(montantHT) $("#bcHT").value = montantHT.replace(/\s/g,"").trim();
+      if(montantTTC) $("#bcTTC").value = montantTTC.replace(/\s/g,"").trim();
+      if(delai) $("#bcDelai").value = delai.trim();
+      $("#bcArticles").value = fullText.slice(0,600).trim();
+      window._bcPdfFile = fileUrl;
+      toast("Champs pré-remplis depuis le PDF — vérifie et corrige si besoin");
+    }, 50);
+  }catch(e){ toast("Erreur d'extraction : "+e.message, true); }
+};
+window.openImportDocForProforma = async function(projectId){
+  const file = await pickPdfFile();
+  if(!file) return;
+  toast("Extraction en cours…");
+  try{
+    const {fullText} = await extractPdfText(file);
+    const numero = extractField(fullText, [/N°\s*:?\s*([A-Z0-9/.\-]+)/i]);
+    const fournisseur = extractField(fullText, [/FOURNISSEUR\s*:\s*([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü0-9 &'\-]{2,40})/]);
+    const montant = extractField(fullText, [/TOTAL\s*TTC\s*([\d\s]{3,})/i, /Montant\s*([\d\s]{3,})/i]);
+    openProformaModal(projectId);
+    setTimeout(()=>{
+      if(numero) $("#pfNum").value = numero.trim();
+      if(fournisseur) $("#pfFourn").value = fournisseur.trim();
+      if(montant) $("#pfMontant").value = montant.replace(/\s/g,"").trim();
+      toast("Champs pré-remplis depuis le PDF — vérifie et corrige si besoin");
+    }, 50);
+  }catch(e){ toast("Erreur d'extraction : "+e.message, true); }
+};
+window.openImportDocForFacture = async function(projectId){
+  const file = await pickPdfFile();
+  if(!file) return;
+  toast("Extraction en cours…");
+  try{
+    const {fullText} = await extractPdfText(file);
+    const numero = extractField(fullText, [/N°\s*:?\s*([A-Z0-9/.\-]+)/i, /FACTURE\s*N°?\s*([A-Z0-9/.\-]+)/i]);
+    const fournisseur = extractField(fullText, [/FOURNISSEUR\s*:\s*([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü0-9 &'\-]{2,40})/]);
+    const montant = extractField(fullText, [/TOTAL\s*TTC\s*([\d\s]{3,})/i]);
+    openFactureModal(projectId);
+    setTimeout(()=>{
+      if(numero) $("#fcNum").value = numero.trim();
+      if(fournisseur) $("#fcFourn").value = fournisseur.trim();
+      if(montant) $("#fcMontant").value = montant.replace(/\s/g,"").trim();
+      toast("Champs pré-remplis depuis le PDF — vérifie et corrige si besoin");
+    }, 50);
+  }catch(e){ toast("Erreur d'extraction : "+e.message, true); }
+};
+// Ouvre un sélecteur de fichier PDF ponctuel (hors formulaire), retourne le fichier choisi
+function pickPdfFile(){
+  return new Promise(resolve=>{
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = ".pdf";
+    input.onchange = ()=> resolve(input.files[0]||null);
+    input.click();
+  });
+}
 
 // -- Bons de commande --
 function renderBCSection(pr){
   const bcs = pr.bonsCommande || [];
-  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openBCModal('${pr.id}')">${icon('plus')} Nouveau bon de commande</button></div>
+  return `<div class="section-title"><div></div><div style="display:flex;gap:8px;">
+    <button class="btn gold sm" onclick="openImportDocForBC('${pr.id}')">📄 Depuis un PDF</button>
+    <button class="btn primary sm" onclick="openBCModal('${pr.id}')">${icon('plus')} Nouveau bon de commande</button>
+  </div></div>
     ${bcs.length===0 ? emptyState("projects","Aucun bon de commande","Créez le premier bon de commande de ce projet.") :
     `<div class="card">${renderBCTable(bcs, pr.id)}</div>`}`;
 }
@@ -1853,7 +2158,10 @@ window.updateBCStatut = async function(projectId, i, val){
 // -- Pro forma --
 function renderProforma(pr){
   const list = pr.proforma || [];
-  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openProformaModal('${pr.id}')">${icon('plus')} Nouvelle pro forma</button></div>
+  return `<div class="section-title"><div></div><div style="display:flex;gap:8px;">
+    <button class="btn gold sm" onclick="openImportDocForProforma('${pr.id}')">📄 Depuis un PDF</button>
+    <button class="btn primary sm" onclick="openProformaModal('${pr.id}')">${icon('plus')} Nouvelle pro forma</button>
+  </div></div>
   ${list.length===0 ? emptyState("projects","Aucune pro forma","Enregistrez les factures pro forma reçues des fournisseurs.") :
   `<div class="card"><table><thead><tr><th>N°</th><th>Fournisseur</th><th>Montant</th><th>Validité</th><th></th></tr></thead><tbody>
     ${list.map((p,i)=>`<tr><td class="mono">${p.numero||'—'}</td><td>${p.fournisseur}</td><td>${fmt(p.montant)} ${p.devise||'FCFA'}</td><td>${p.validite||'—'}</td><td>${delBtn(`deleteArrayItem('${pr.id}','proforma',${i},'${esc(p.numero||p.fournisseur)}')`)}</td></tr>`).join("")}
@@ -1883,7 +2191,10 @@ window.submitProforma = async function(projectId){
 // -- Factures --
 function renderFactures(pr){
   const list = pr.factures || [];
-  return `<div class="section-title"><div></div><button class="btn primary sm" onclick="openFactureModal('${pr.id}')">${icon('plus')} Nouvelle facture</button></div>
+  return `<div class="section-title"><div></div><div style="display:flex;gap:8px;">
+    <button class="btn gold sm" onclick="openImportDocForFacture('${pr.id}')">📄 Depuis un PDF</button>
+    <button class="btn primary sm" onclick="openFactureModal('${pr.id}')">${icon('plus')} Nouvelle facture</button>
+  </div></div>
   ${list.length===0 ? emptyState("projects","Aucune facture","Enregistrez les factures reçues des fournisseurs.") :
   `<div class="card">${list.map((f,i)=>`
     <div style="padding:9px 0;border-bottom:1px solid var(--line);">
@@ -2347,6 +2658,35 @@ window.submitImportRapport = async function(projectId){
 };
 
 // Génère un rapport complet avec papier en-tête et lance l'impression / export PDF
+// -------------------------------------------------------------
+// GÉNÉRATEUR PDF GÉNÉRIQUE — en-tête (logo) + pied de page (bandeau
+// coordonnées) identiques sur tout document exporté ou téléchargé.
+// -------------------------------------------------------------
+function printDocument(title, subtitle, bodyHtml){
+  const now = new Date();
+  document.getElementById("printReportArea").innerHTML = `
+    <div class="letterhead">
+      <img src="assets/logo.jpeg" alt="logo">
+      <div class="lh-info">
+        <strong>${COMPANY.nom}</strong>
+        ${COMPANY.bp}<br>${COMPANY.rc} · ${COMPANY.nui}
+      </div>
+    </div>
+    <h2 style="margin:0 0 4px;">${title}</h2>
+    <p style="font-size:11.5px;color:#666;margin:0 0 20px;">${subtitle||''} · généré le ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR')}</p>
+    ${bodyHtml}
+    <div class="report-footer-band">
+      <span>🌐 ${COMPANY.site}</span>
+      <span>✉️ ${COMPANY.email}</span>
+      <span>📞 ${COMPANY.tel}</span>
+      <span>${COMPANY.rc}</span>
+      <span>${COMPANY.nui}</span>
+    </div>
+  `;
+  document.getElementById("printReportArea").style.display = "block";
+  setTimeout(()=>{ window.print(); document.getElementById("printReportArea").style.display = "none"; }, 100);
+}
+
 window.printProjectReport = function(projectId){
   const pr = STATE.projects.find(p=>p.id===projectId);
   if(!pr) return;
@@ -2405,18 +2745,7 @@ window.printProjectReport = function(projectId){
   const alertsHtml = alertsProjet.length===0 ? `<p style="font-size:12px;color:#2E7D32;">Aucune alerte active.</p>` :
     alertsProjet.map(a=>`<div class="report-row"><span>${a.type}</span><strong>${a.text.replace(pr.nom+' — ','')}</strong></div>`).join("");
 
-  const now = new Date();
-  document.getElementById("printReportArea").innerHTML = `
-    <div class="letterhead">
-      <img src="assets/logo.jpeg" alt="logo">
-      <div class="lh-info">
-        <strong>${COMPANY.nom}</strong>
-        ${COMPANY.bp} · ${COMPANY.rc} · ${COMPANY.nui}
-      </div>
-    </div>
-    <h2 style="margin:0 0 4px;">Rapport de projet — ${pr.nom}</h2>
-    <p style="font-size:11.5px;color:#666;margin:0 0 20px;">Généré le ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR')} · Code projet : ${pr.code||'—'}</p>
-
+  const bodyHtml = `
     <div class="report-section">
       <h4>Informations générales</h4>
       <div class="report-row"><span>Localisation</span><strong>${pr.ville||'—'}, ${pr.pays||'—'}</strong></div>
@@ -2425,11 +2754,9 @@ window.printProjectReport = function(projectId){
       <div class="report-row"><span>Date de lancement</span><strong>${pr.dateDebut||'—'}</strong></div>
       <div class="report-row"><span>Date de fin prévue</span><strong>${pr.dateFinPrevue||'—'}</strong></div>
     </div>
-
     <div class="report-section"><h4>Avancement par phase</h4>${phasesHtml}</div>
     <div class="report-section"><h4>Planning</h4>${planningHtml}</div>
     <div class="report-section"><h4>Travaux</h4>${travauxHtml}</div>
-
     <div class="report-section">
       <h4>Finance</h4>
       <div class="report-row"><span>Budget initial</span><strong>${fmtXAF(pr.budgetInitial)}</strong></div>
@@ -2437,7 +2764,6 @@ window.printProjectReport = function(projectId){
       <div class="report-row"><span>Montant payé</span><strong>${fmtXAF(pr.montantPaye)}</strong></div>
       <div class="report-row"><span>Solde restant</span><strong>${fmtXAF((pr.montantEngage||0)-(pr.montantPaye||0))}</strong></div>
     </div>
-
     <div class="report-section"><h4>Fournisseurs</h4>${fournisseursHtml}</div>
     <div class="report-section"><h4>Bons de commande</h4>${bcHtml}</div>
     <div class="report-section"><h4>Livraisons</h4>${livraisonsHtml}</div>
@@ -2446,11 +2772,8 @@ window.printProjectReport = function(projectId){
     ${photosHtml}
     <div class="report-section"><h4>Alertes</h4>${alertsHtml}</div>
     <div class="report-section"><h4>Risques & blocages</h4>${risquesHtml}</div>
-
-    <div class="report-footer">${COMPANY.nom} — Document généré automatiquement par l'application de pilotage des projets.</div>
   `;
-  document.getElementById("printReportArea").style.display = "block";
-  setTimeout(()=>{ window.print(); document.getElementById("printReportArea").style.display = "none"; }, 100);
+  printDocument(`Rapport de projet — ${pr.nom}`, `Code projet : ${pr.code||'—'}`, bodyHtml);
 };
 
 // -------------------------------------------------------------
@@ -2665,6 +2988,12 @@ function subscribeData(){
     if(STATE.route==="responsables") render();
   }, err=>console.error(err));
   STATE.unsubscribers.push(unsub5);
+
+  const unsub6 = onSnapshot(collection(db,"stock"), snap=>{
+    STATE.stock = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(STATE.route==="stock") render();
+  }, err=>console.error(err));
+  STATE.unsubscribers.push(unsub6);
 }
 
 // PWA service worker

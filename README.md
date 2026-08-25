@@ -88,7 +88,18 @@ Les 8 étapes standard (Études, Travaux préparatoires…) restent le socle com
 
 **Dates antidatables** : les champs de date (besoins, bons de commande, documents, points de checklist) acceptent désormais n'importe quelle date passée — utile pour enregistrer des tâches déjà réalisées il y a plusieurs semaines ou mois.
 
-## 10. Import d'une expression de besoin (PDF)
-Dans Achats → Besoins → **"Importer un document"** : choisis un PDF, le texte est extrait automatiquement (bibliothèque pdf.js), puis tu coches les lignes qui correspondent à des articles pour les ajouter en un clic comme demandes de besoin.
+## 10. Import de documents (PDF) — Besoins, Bons de commande, Pro forma, Factures
+- **Besoins** (Achats → Besoins → "Importer un document") : chaque ligne du tableau du PDF est analysée pour en extraire une désignation et une quantité probable. **Tout est modifiable et effaçable** avant d'enregistrer — coche/décoche, corrige le texte ou la quantité, supprime une ligne avec ✕.
+- **Bons de commande / Pro forma / Factures** (bouton "📄 Depuis un PDF") : le numéro, le fournisseur et les montants sont recherchés automatiquement dans le texte du document et pré-remplissent le formulaire de création — à vérifier et corriger avant d'enregistrer.
 
-⚠️ **Honnêteté technique** : ce n'est pas une IA qui "comprend" le document — c'est une extraction du texte brut suivie d'une sélection manuelle. Ça fonctionne bien pour un PDF texte (généré par ordinateur), mais pas pour un PDF scanné/photo (image sans couche de texte) — dans ce cas, ajoute les besoins manuellement, le fichier reste joint pour référence. Une vraie lecture automatique de documents scannés nécessiterait un service d'OCR/IA payant, non configuré ici.
+⚠️ **Honnêteté technique** : ce n'est pas une IA qui "comprend" le document — c'est une extraction du texte brut (bibliothèque pdf.js) suivie de motifs de reconnaissance simples (ex. "FOURNISSEUR :", "TOTAL TTC"). Ça fonctionne bien pour un PDF texte (généré par ordinateur, comme tes bons de commande), mais pas pour un PDF scanné/photo (image sans couche de texte) — dans ce cas, saisis les informations manuellement, le fichier reste joint pour référence. Une vraie lecture automatique de documents scannés nécessiterait un service d'OCR/IA payant, non configuré ici.
+
+## 11. Documents PDF exportés — en-tête et pied de page uniformes
+Tout document généré depuis l'application (rapport de projet, comparaison des projets, liste des fournisseurs, budget) utilise désormais le même papier en-tête (logo) et le même bandeau de pied de page (site web, e-mail, téléphone, RCCM, NUI) que tes documents officiels — et s'exporte en PDF via la boîte de dialogue d'impression du navigateur (voir section 5).
+
+## 12. Nouveaux modules
+- **Documentation** : vue centralisée de tous les documents de tous les projets (documents, besoins, BC, factures, pro forma, rapports), filtrable par catégorie.
+- **Stock** : suivi du magasin (groupes électrogènes, extincteurs, matériel divers) — quantités, entrées/sorties avec historique, alerte automatique en cas de stock bas.
+- **Historique supprimable** : chaque entrée peut être supprimée individuellement, ou l'historique vidé entièrement (Administrateur/Direction/DAF).
+- **Budget** : possibilité d'ajouter des catégories personnalisées dans la ventilation, en plus des catégories standard.
+- **Construction (Travaux)** : ajout et suppression de tâches, en plus de la mise à jour du statut et de l'avancement.
