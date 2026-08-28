@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-25-02h30";
+export const BUILD_ID = "2026-08-25-02h50";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -2279,8 +2279,9 @@ function renderBCSection(pr){
 }
 function renderBCTable(bcs, projectId){
   return bcs.map((b,i)=>{
-    const arts = b.articles||[];
+    const arts = Array.isArray(b.articles) ? b.articles : [];
     const cols = b.colonnes && b.colonnes.length ? b.colonnes : (arts[0]?Object.keys(arts[0]):[]);
+    const legacyText = (!Array.isArray(b.articles) && (b.articles||b.articlesTexte)) ? (b.articles||b.articlesTexte) : "";
     return `<div style="padding:11px 0;border-bottom:1px solid var(--line);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
         <div style="min-width:0;">
@@ -2303,7 +2304,7 @@ function renderBCTable(bcs, projectId){
           <table style="min-width:400px;"><thead><tr>${cols.map(c=>`<th style="font-size:10px;">${esc(c)}</th>`).join("")}</tr></thead><tbody>
             ${arts.map(a=>`<tr>${cols.map(c=>`<td style="font-size:11.5px;">${esc(a[c]||'')}</td>`).join("")}</tr>`).join("")}
           </tbody></table>
-        </div>` : ''}
+        </div>` : (legacyText ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;white-space:pre-wrap;">${esc(legacyText)}</div>` : '')}
     </div>`;
   }).join("");
 }
@@ -2319,9 +2320,9 @@ window.openEditAchatModal = function(projectId, targetType, index){
   window._genericExtract = {
     docType: targetType==="bc"?"Bon de commande":targetType==="proforma"?"Pro forma":"Facture",
     numero:rec.numero||"", date:rec.dateEmission||"", fournisseur:rec.fournisseur||"", client:rec.client||"",
-    objet:rec.objet||"", montantHT:String(rec.montantHT||""), tva:String(rec.tva||""),
+    objet:rec.objet||rec.articlesTexte||(typeof rec.articles==='string'?rec.articles:"")||"", montantHT:String(rec.montantHT||""), tva:String(rec.tva||""),
     montantTTC:String(rec.montantTTC||rec.montant||""), echeance:rec.echeance||rec.validite||"",
-    columns:(rec.colonnes||[]).map(l=>({label:l})), tableRows:rec.articles||[],
+    columns:(rec.colonnes||[]).map(l=>({label:l})), tableRows:Array.isArray(rec.articles)?rec.articles:[],
     fileUrl:rec.fileUrl||null, fileName:rec.fileName||null
   };
   renderPdfReviewModal(projectId, targetType);
@@ -2355,7 +2356,7 @@ window.submitBC = async function(projectId){
     numero:$("#bcNum").value.trim(), fournisseur, montantHT:Number($("#bcHT").value||0),
     montantTTC:Number($("#bcTTC").value||0), devise:$("#bcDevise").value.trim()||"FCFA",
     delaiLivraison:$("#bcDelai").value.trim(), dateEmission:$("#bcDateEmission").value||todayISO(), datePrevue:$("#bcDate").value,
-    statut:$("#bcStatut").value, articles:$("#bcArticles").value.trim(), createdAt:todayISO()
+    statut:$("#bcStatut").value, articlesTexte:$("#bcArticles").value.trim(), createdAt:todayISO()
   };
   const bonsCommande = [...(pr.bonsCommande||[]), bc];
   // Met aussi à jour le montant engagé du projet
