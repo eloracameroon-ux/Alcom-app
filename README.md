@@ -88,11 +88,17 @@ Les 8 étapes standard (Études, Travaux préparatoires…) restent le socle com
 
 **Dates antidatables** : les champs de date (besoins, bons de commande, documents, points de checklist) acceptent désormais n'importe quelle date passée — utile pour enregistrer des tâches déjà réalisées il y a plusieurs semaines ou mois.
 
-## 10. Import de documents (PDF) — Besoins, Bons de commande, Pro forma, Factures
-- **Besoins** (Achats → Besoins → "Importer un document") : chaque ligne du tableau du PDF est analysée pour en extraire une désignation et une quantité probable. **Tout est modifiable et effaçable** avant d'enregistrer — coche/décoche, corrige le texte ou la quantité, supprime une ligne avec ✕.
-- **Bons de commande / Pro forma / Factures** (bouton "📄 Depuis un PDF") : le numéro, le fournisseur et les montants sont recherchés automatiquement dans le texte du document et pré-remplissent le formulaire de création — à vérifier et corriger avant d'enregistrer.
+## 10. Import de documents (PDF) — Bons de commande, Pro forma, Factures
+Le bouton **"📄 Depuis un PDF"** (Achats → Bons de commande / Pro forma / Factures) lance une analyse structurelle du document :
+- **Type détecté automatiquement** (Bon de commande, Facture, Pro forma, Devis, Reçu) par reconnaissance de mots-clés
+- **Colonnes du tableau détectées dynamiquement** à partir de la ligne d'en-tête réelle du document (Désignation, Qté, P.U., Montant… peu importe l'ordre ou les intitulés exacts) — pas un modèle figé sur un seul type de bon de commande
+- **Champs généraux** recherchés dans le texte : numéro, dates, fournisseur, client, objet (déduit automatiquement des désignations si absent), montants HT/TVA/TTC, échéance
 
-⚠️ **Honnêteté technique** : ce n'est pas une IA qui "comprend" le document — c'est une extraction du texte brut (bibliothèque pdf.js) suivie de motifs de reconnaissance simples (ex. "FOURNISSEUR :", "TOTAL TTC"). Ça fonctionne bien pour un PDF texte (généré par ordinateur, comme tes bons de commande), mais pas pour un PDF scanné/photo (image sans couche de texte) — dans ce cas, saisis les informations manuellement, le fichier reste joint pour référence. Une vraie lecture automatique de documents scannés nécessiterait un service d'OCR/IA payant, non configuré ici.
+Un **écran de relecture** s'ouvre ensuite avec tout pré-rempli mais **entièrement modifiable** : chaque champ général, et un tableau éditable ligne par ligne (ajout/suppression de lignes) reprenant les colonnes détectées dans le document d'origine. Rien n'est enregistré tant que tu n'as pas validé.
+
+Une fois enregistré, chaque BC/facture/pro forma affiche l'objet et un détail dépliable des articles ; le bouton ✎ permet de rouvrir et corriger n'importe quel enregistrement (importé ou saisi manuellement) à tout moment.
+
+⚠️ **Honnêteté technique** : ce n'est pas une IA qui "comprend" le document — c'est une analyse de la **position du texte** dans le PDF (regroupement en lignes/colonnes à partir des coordonnées), donc générique à n'importe quel fournisseur/modèle, mais pas infaillible. Ça fonctionne uniquement sur un PDF texte (généré par ordinateur) — pas sur un scan/photo, où il faudra saisir manuellement. L'écran de relecture existe précisément pour corriger les rares erreurs d'extraction.
 
 ## 11. Documents PDF — téléchargement direct
 Tout rapport (projet individuel, tous les projets, comparaison, budget, dépenses, responsables & travaux, fournisseurs, stock) se **télécharge immédiatement en PDF** dès que tu appuies sur le bouton — plus de boîte d'impression, plus d'attente. Chaque PDF reprend le même papier en-tête (logo) et le même bandeau de pied de page (site web, e-mail, téléphone, RCCM, NUI) que tes documents officiels.

@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-25-01h10";
+export const BUILD_ID = "2026-08-25-02h30";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -1930,6 +1930,115 @@ function extractField(text, patterns){
   return "";
 }
 
+// -------------------------------------------------------------
+// EXTRACTION STRUCTURÉE GÉNÉRIQUE — Achats (BC, factures, pro forma,
+// devis, reçus…). Analyse la POSITION du texte dans le PDF (colonnes
+// détectées dynamiquement à partir de la ligne d'en-tête du tableau)
+// plutôt que des motifs figés sur un seul modèle de document.
+// Honnêteté : c'est une extraction structurelle par position, pas une
+// IA qui « comprend » le document — d'où l'écran de relecture où tout
+// reste corrigible avant d'enregistrer.
+// -------------------------------------------------------------
+const TABLE_HEADER_KEYWORDS = ["désignation","designation","description","article","référence","reference","libellé","libelle","qté","qte","quantité","quantite","unité","unite","prix","p.u","puht","montant","total","tva","remise","code"];
+const DOCTYPE_KEYWORDS = {
+  "Facture": ["facture"],
+  "Bon de commande": ["bon de commande", "bon de commande n°"],
+  "Pro forma": ["pro forma","proforma","pro-forma"],
+  "Devis": ["devis"],
+  "Reçu": ["reçu","recu","reçu de paiement"]
+};
+
+async function extractPdfStructured(file){
+  if(typeof pdfjsLib === "undefined") throw new Error("Bibliothèque PDF non chargée — vérifie ta connexion.");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+  let fullText = "";
+  let allRows = []; // [{y, items:[{text,x}]}] par page, y décroissant
+  for(let p=1;p<=pdf.numPages;p++){
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const byY = {};
+    content.items.forEach(it=>{
+      const y = Math.round(it.transform[5]/2)*2; // tolérance de 2pt
+      if(!byY[y]) byY[y] = [];
+      byY[y].push({text: it.str, x: Math.round(it.transform[4])});
+    });
+    Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>{
+      const items = byY[y].sort((a,b)=>a.x-b.x).filter(it=>it.text.trim());
+      if(items.length) allRows.push({y, items});
+    });
+    fullText += content.items.map(it=>it.str).join(" ") + "\n";
+  }
+
+  // Type de document (score par mots-clés)
+  const lower = fullText.toLowerCase();
+  let docType = "Document", bestScore = 0;
+  Object.entries(DOCTYPE_KEYWORDS).forEach(([type,kws])=>{
+    const score = kws.reduce((s,k)=> s + (lower.includes(k)?1:0), 0);
+    if(score > bestScore){ bestScore = score; docType = type; }
+  });
+
+  // Ligne d'en-tête du tableau : celle qui contient le plus de mots-clés connus
+  let headerIdx = -1, headerScore = 0;
+  allRows.forEach((row,i)=>{
+    const rowText = row.items.map(it=>it.text.toLowerCase()).join(" ");
+    const score = TABLE_HEADER_KEYWORDS.reduce((s,k)=> s + (rowText.includes(k)?1:0), 0);
+    if(score > headerScore){ headerScore = score; headerIdx = i; }
+  });
+
+  let columns = [], tableRows = [];
+  if(headerIdx >= 0 && headerScore >= 2){
+    // Colonnes = items de la ligne d'en-tête, position X = ancre de colonne
+    columns = allRows[headerIdx].items.map(it=>({label: it.text.trim(), x: it.x}));
+    // Fusionne les colonnes d'en-tête trop proches (ex: "P.U" + "H.T" sur 2 items)
+    const merged = [];
+    columns.forEach(c=>{
+      const prev = merged[merged.length-1];
+      if(prev && c.x - prev.x < 25){ prev.label += " " + c.label; } else { merged.push({...c}); }
+    });
+    columns = merged;
+    // Lignes suivantes jusqu'à un mot indiquant la fin du tableau (total, montant, arrêté…)
+    for(let i=headerIdx+1; i<allRows.length; i++){
+      const row = allRows[i];
+      const rowText = row.items.map(it=>it.text.toLowerCase()).join(" ");
+      if(/^(total|montant\s*ht|montant\s*ttc|arrêt[ée]|sous-total|net\s*[àa]\s*payer)/i.test(rowText.trim())) break;
+      // Répartit chaque item dans la colonne dont l'ancre X est la plus proche
+      const rowObj = {};
+      columns.forEach(c=> rowObj[c.label] = "");
+      row.items.forEach(it=>{
+        let best = columns[0], bestDist = Infinity;
+        columns.forEach(c=>{ const d = Math.abs(it.x - c.x); if(d < bestDist){ bestDist = d; best = c; } });
+        rowObj[best.label] = (rowObj[best.label] ? rowObj[best.label] + " " : "") + it.text;
+      });
+      if(Object.values(rowObj).some(v=>v.trim())) tableRows.push(rowObj);
+      if(tableRows.length >= 100) break;
+    }
+  }
+
+  const numero = extractField(fullText, [/N°\s*:?\s*([A-Z0-9/.\-]{3,})/i, /(?:FACTURE|BON DE COMMANDE|DEVIS|PRO ?FORMA)\s*N°?\s*:?\s*([A-Z0-9/.\-]{3,})/i]);
+  const date = extractField(fullText, [/(?:Date|Douala|Yaound[ée])[,:]?\s*(?:le\s*)?(\d{1,2}[\/\-\s](?:\d{1,2}|[a-zA-Zéû]+)[\/\-\s]\d{2,4})/i]);
+  const fournisseur = extractField(fullText, [/FOURNISSEUR\s*:\s*([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü0-9 &'\-]{2,45})/, /^([A-ZÀ-Ü][A-ZÀ-Ü\s&'\-]{3,30}(?:SARL|SA|SUARL|EURL|ETS)\b)/m]);
+  const client = extractField(fullText, [/CLIENT\s*:\s*([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü0-9 &'\-]{2,45})/, /(ALCOM PETROLEUM)/i]);
+  const montantHT = extractField(fullText, [/Montant\s*HT\s*:?\s*([\d\s]{3,})/i, /Total\s*(?:remis[ée])?\s*:?\s*([\d\s]{3,})(?=.*TVA)/i]);
+  const tva = extractField(fullText, [/TVA\s*(?:[\d.,]+\s*%)?\s*:?\s*([\d\s]{2,})/i]);
+  const montantTTC = extractField(fullText, [/TOTAL\s*TTC\s*:?\s*([\d\s]{3,})/i, /NET\s*[ÀA]\s*PAYER\s*:?\s*([\d\s]{3,})/i]);
+  const echeance = extractField(fullText, [/[ÉE]ch[ée]ance\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i]);
+  const delai = extractField(fullText, [/D[ée]lai\s*(?:de\s*(?:r[ée]alisation|livraison))?\s*:?\s*([^\n]{2,30})/i]);
+
+  // Objet synthétisé à partir des désignations si aucun "Objet :" explicite
+  let objet = extractField(fullText, [/Objet\s*:\s*([^\n]{3,120})/i]);
+  if(!objet && columns.length){
+    const desigCol = columns.find(c=>/d[ée]sign|description|article|libell[ée]/i.test(c.label));
+    if(desigCol){
+      const items = tableRows.slice(0,3).map(r=>r[desigCol.label]).filter(Boolean);
+      if(items.length) objet = items.join(", ").slice(0,140);
+    }
+  }
+
+  return {docType, numero, date, fournisseur, client, objet, montantHT, tva, montantTTC, echeance, delai, columns, tableRows, fullText};
+}
+
 window.openBesoinPdfModal = function(projectId){
   openModal(`<div class="modal-head"><h3>Importer une expression de besoin</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Choisis un PDF. La désignation et la quantité de chaque ligne sont détectées automatiquement — tu peux ensuite tout corriger ou supprimer avant d'enregistrer.</p>
@@ -2010,67 +2119,143 @@ window.submitBesoinFromPdfLines = async function(projectId, lignes, fileUrl, fil
 };
 
 // -- Import PDF pour pré-remplir Bon de commande / Pro forma / Facture --
-window.openImportDocForBC = async function(projectId){
+// -------------------------------------------------------------
+// IMPORT GÉNÉRIQUE POUR ACHATS — un seul point d'entrée pour BC,
+// factures, pro forma (et devis/reçus assimilés). Extraction
+// structurée, écran de relecture où TOUT est modifiable avant
+// d'enregistrer, articles détaillés avec les colonnes détectées
+// dans le document d'origine.
+// -------------------------------------------------------------
+window.openImportDocGeneric = async function(projectId, targetType){
   const file = await pickPdfFile();
   if(!file) return;
-  toast("Extraction en cours…");
+  toast("Analyse du document en cours…");
   try{
     let fileUrl = null;
     if(file.size <= 720000) fileUrl = await fileToBase64(file);
-    const {fullText} = await extractPdfText(file);
-    const numero = extractField(fullText, [/N°\s*:?\s*([A-Z0-9/.\-]+)/i, /BON DE COMMANDE\s*N°?\s*([A-Z0-9/.\-]+)/i]);
-    const fournisseur = extractField(fullText, [/FOURNISSEUR\s*:\s*([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü0-9 &'\-]{2,40})/]);
-    const montantHT = extractField(fullText, [/Montant\s*HT\s*([\d\s]{3,})/i, /Total\s*remis[ée]\s*([\d\s]{3,})/i]);
-    const montantTTC = extractField(fullText, [/TOTAL\s*TTC\s*([\d\s]{3,})/i]);
-    const delai = extractField(fullText, [/D[ée]lai\s*de\s*r[ée]alisation\s*:?\s*([^\n]{2,30})/i]);
-    openBCModal(projectId);
-    setTimeout(()=>{
-      if(numero) $("#bcNum").value = numero.trim();
-      if(fournisseur) $("#bcFourn").value = fournisseur.trim();
-      if(montantHT) $("#bcHT").value = montantHT.replace(/\s/g,"").trim();
-      if(montantTTC) $("#bcTTC").value = montantTTC.replace(/\s/g,"").trim();
-      if(delai) $("#bcDelai").value = delai.trim();
-      $("#bcArticles").value = fullText.slice(0,600).trim();
-      window._bcPdfFile = fileUrl;
-      toast("Champs pré-remplis depuis le PDF — vérifie et corrige si besoin");
-    }, 50);
+    const ex = await extractPdfStructured(file);
+    window._genericExtract = {...ex, fileUrl, fileName: file.name};
+    window._editingIndex = null;
+    renderPdfReviewModal(projectId, targetType);
   }catch(e){ toast("Erreur d'extraction : "+e.message, true); }
 };
-window.openImportDocForProforma = async function(projectId){
-  const file = await pickPdfFile();
-  if(!file) return;
-  toast("Extraction en cours…");
-  try{
-    const {fullText} = await extractPdfText(file);
-    const numero = extractField(fullText, [/N°\s*:?\s*([A-Z0-9/.\-]+)/i]);
-    const fournisseur = extractField(fullText, [/FOURNISSEUR\s*:\s*([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü0-9 &'\-]{2,40})/]);
-    const montant = extractField(fullText, [/TOTAL\s*TTC\s*([\d\s]{3,})/i, /Montant\s*([\d\s]{3,})/i]);
-    openProformaModal(projectId);
-    setTimeout(()=>{
-      if(numero) $("#pfNum").value = numero.trim();
-      if(fournisseur) $("#pfFourn").value = fournisseur.trim();
-      if(montant) $("#pfMontant").value = montant.replace(/\s/g,"").trim();
-      toast("Champs pré-remplis depuis le PDF — vérifie et corrige si besoin");
-    }, 50);
-  }catch(e){ toast("Erreur d'extraction : "+e.message, true); }
+const DOC_TYPE_OPTIONS = ["Bon de commande","Facture","Pro forma","Devis","Reçu","Document"];
+function renderPdfReviewModal(projectId, targetType){
+  const ex = window._genericExtract;
+  openModal(`
+    <div class="modal-head"><h3>Vérifier les informations extraites</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Extraction automatique à partir du PDF — corrige tout ce qui est nécessaire avant d'enregistrer. ${ex.fileName?`📎 ${ex.fileName}`:''}</p>
+    <div class="form-grid">
+      <div class="f-field"><label>Type de document détecté</label>
+        <select id="rvType">${DOC_TYPE_OPTIONS.map(t=>`<option ${t===ex.docType?'selected':''}>${t}</option>`).join("")}</select>
+      </div>
+      <div class="f-field"><label>Numéro</label><input id="rvNumero" value="${esc(ex.numero)}"></div>
+      <div class="f-field"><label>Date d'émission</label><input id="rvDate" value="${esc(ex.date)}" placeholder="jj/mm/aaaa"></div>
+      <div class="f-field"><label>Date d'échéance</label><input id="rvEcheance" value="${esc(ex.echeance)}" placeholder="jj/mm/aaaa"></div>
+      <div class="f-field"><label>Fournisseur</label><input id="rvFournisseur" value="${esc(ex.fournisseur)}"></div>
+      <div class="f-field"><label>Client</label><input id="rvClient" value="${esc(ex.client)}"></div>
+      <div class="f-field full"><label>Objet / libellé</label><input id="rvObjet" value="${esc(ex.objet)}" placeholder="Ex : Fourniture de matériel informatique — 2 ordinateurs, 1 imprimante"></div>
+      <div class="f-field"><label>Montant HT</label><input id="rvHT" value="${esc((ex.montantHT||'').replace(/\s/g,''))}"></div>
+      <div class="f-field"><label>TVA</label><input id="rvTVA" value="${esc((ex.tva||'').replace(/\s/g,''))}"></div>
+      <div class="f-field"><label>Montant TTC / Total</label><input id="rvTTC" value="${esc((ex.montantTTC||'').replace(/\s/g,''))}"></div>
+      <div class="f-field"><label>Statut</label><select id="rvStatut">${BC_STATUTS.map(s=>`<option>${s}</option>`).join("")}</select></div>
+    </div>
+    <div style="margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <label style="font-size:11.5px;font-weight:600;color:var(--muted);">Détail des articles (colonnes détectées dans le document — modifiables)</label>
+        <button class="btn sm" onclick="addPdfReviewRow()">+ Ligne</button>
+      </div>
+      <div id="rvArticlesWrap" style="overflow-x:auto;">${renderPdfReviewTable(ex.columns, ex.tableRows)}</div>
+      ${ex.columns.length===0 ? `<p style="font-size:11.5px;color:var(--muted);margin-top:6px;">Aucun tableau détecté automatiquement — ajoute les lignes manuellement si besoin.</p>` : ""}
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="submitGenericPdfImport('${projectId}','${targetType}')">Enregistrer</button></div>
+  `);
+}
+function renderPdfReviewTable(columns, rows){
+  const cols = columns.length ? columns.map(c=>c.label) : ["Désignation","Quantité","Prix unitaire","Montant"];
+  window._rvColumns = cols;
+  const dataRows = rows.length ? rows : [Object.fromEntries(cols.map(c=>[c,""]))];
+  return `<table id="rvArticlesTable" style="min-width:520px;"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}<th></th></tr></thead><tbody>
+    ${dataRows.map(r=>renderPdfReviewRowHtml(cols, r)).join("")}
+  </tbody></table>`;
+}
+function renderPdfReviewRowHtml(cols, rowObj){
+  return `<tr class="rvRow">${cols.map(c=>`<td><input class="rvCell" data-col="${esc(c)}" value="${esc(rowObj[c]||'')}" style="width:100%;min-width:90px;font-size:12px;padding:5px 6px;border-radius:5px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);"></td>`).join("")}<td><button class="btn sm icon" onclick="this.closest('tr').remove()">✕</button></td></tr>`;
+}
+window.addPdfReviewRow = function(){
+  const cols = window._rvColumns || ["Désignation","Quantité","Prix unitaire","Montant"];
+  $("#rvArticlesTable tbody").insertAdjacentHTML("beforeend", renderPdfReviewRowHtml(cols, {}));
 };
-window.openImportDocForFacture = async function(projectId){
-  const file = await pickPdfFile();
-  if(!file) return;
-  toast("Extraction en cours…");
-  try{
-    const {fullText} = await extractPdfText(file);
-    const numero = extractField(fullText, [/N°\s*:?\s*([A-Z0-9/.\-]+)/i, /FACTURE\s*N°?\s*([A-Z0-9/.\-]+)/i]);
-    const fournisseur = extractField(fullText, [/FOURNISSEUR\s*:\s*([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü0-9 &'\-]{2,40})/]);
-    const montant = extractField(fullText, [/TOTAL\s*TTC\s*([\d\s]{3,})/i]);
-    openFactureModal(projectId);
-    setTimeout(()=>{
-      if(numero) $("#fcNum").value = numero.trim();
-      if(fournisseur) $("#fcFourn").value = fournisseur.trim();
-      if(montant) $("#fcMontant").value = montant.replace(/\s/g,"").trim();
-      toast("Champs pré-remplis depuis le PDF — vérifie et corrige si besoin");
-    }, 50);
-  }catch(e){ toast("Erreur d'extraction : "+e.message, true); }
+window.submitGenericPdfImport = async function(projectId, targetType){
+  const cols = window._rvColumns || [];
+  const rows = $$(".rvRow").map(tr=>{
+    const obj = {};
+    tr.querySelectorAll(".rvCell").forEach(inp=> obj[inp.dataset.col] = inp.value.trim());
+    return obj;
+  }).filter(r=> Object.values(r).some(v=>v));
+  const ex = window._genericExtract || {};
+  const record = {
+    docType: $("#rvType").value,
+    numero: $("#rvNumero").value.trim(),
+    fournisseur: $("#rvFournisseur").value.trim(),
+    client: $("#rvClient").value.trim(),
+    objet: $("#rvObjet").value.trim(),
+    dateEmission: $("#rvDate").value.trim(),
+    echeance: $("#rvEcheance").value.trim(),
+    montantHT: Number(($("#rvHT").value||"0").replace(/\D/g,""))||0,
+    tva: Number(($("#rvTVA").value||"0").replace(/\D/g,""))||0,
+    montantTTC: Number(($("#rvTTC").value||"0").replace(/\D/g,""))||0,
+    statut: $("#rvStatut").value,
+    colonnes: cols, articles: rows,
+    fileUrl: ex.fileUrl||null, fileName: ex.fileName||null
+  };
+  if(!record.fournisseur){ toast("Le fournisseur est requis", true); return; }
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const editIdx = window._editingIndex;
+  const isEdit = editIdx !== undefined && editIdx !== null;
+  if(targetType==="bc"){
+    const bc = {
+      numero:record.numero, fournisseur:record.fournisseur, client:record.client, objet:record.objet,
+      montantHT:record.montantHT, montantTTC:record.montantTTC, devise:"FCFA",
+      dateEmission:record.dateEmission, datePrevue:"", delaiLivraison:"",
+      statut:record.statut, articles:record.articles, colonnes:record.colonnes,
+      fileUrl:record.fileUrl, fileName:record.fileName, createdAt:isEdit?(pr.bonsCommande[editIdx].createdAt||todayISO()):todayISO()
+    };
+    let bonsCommande, montantEngage = Number(pr.montantEngage)||0;
+    if(isEdit){
+      bonsCommande = JSON.parse(JSON.stringify(pr.bonsCommande));
+      montantEngage += record.montantTTC - (Number(bonsCommande[editIdx].montantTTC)||0);
+      bonsCommande[editIdx] = bc;
+    } else {
+      bonsCommande = [...(pr.bonsCommande||[]), bc];
+      montantEngage += record.montantTTC;
+    }
+    await updateDoc(doc(db,"projects",projectId), {bonsCommande, montantEngage});
+    logActivity(projectId, "Achats", `BC ${isEdit?'modifié':'importé'} — ${record.numero||record.fournisseur}`, "", `${fmt(record.montantTTC)} FCFA`);
+  } else if(targetType==="proforma"){
+    const pf = {
+      numero:record.numero, fournisseur:record.fournisseur, client:record.client, objet:record.objet,
+      montant:record.montantTTC, devise:"FCFA", validite:record.echeance,
+      articles:record.articles, colonnes:record.colonnes, fileUrl:record.fileUrl, fileName:record.fileName
+    };
+    let proforma;
+    if(isEdit){ proforma = JSON.parse(JSON.stringify(pr.proforma)); proforma[editIdx] = pf; }
+    else proforma = [...(pr.proforma||[]), pf];
+    await updateDoc(doc(db,"projects",projectId), {proforma});
+  } else if(targetType==="facture"){
+    const fc = {
+      numero:record.numero, fournisseur:record.fournisseur, client:record.client, objet:record.objet,
+      montant:record.montantTTC, montantHT:record.montantHT, tva:record.tva, devise:"FCFA",
+      echeance:record.echeance, statut:isEdit?(pr.factures[editIdx].statut||"À payer"):"À payer",
+      articles:record.articles, colonnes:record.colonnes, fileUrl:record.fileUrl, fileName:record.fileName
+    };
+    let factures;
+    if(isEdit){ factures = JSON.parse(JSON.stringify(pr.factures)); factures[editIdx] = fc; }
+    else factures = [...(pr.factures||[]), fc];
+    await updateDoc(doc(db,"projects",projectId), {factures});
+  }
+  window._editingIndex = null;
+  closeModal(); toast(`${record.docType} enregistré ✓`);
 };
 // Ouvre un sélecteur de fichier PDF ponctuel (hors formulaire), retourne le fichier choisi
 function pickPdfFile(){
@@ -2086,28 +2271,63 @@ function pickPdfFile(){
 function renderBCSection(pr){
   const bcs = pr.bonsCommande || [];
   return `<div class="section-title"><div></div><div style="display:flex;gap:8px;">
-    <button class="btn gold sm" onclick="openImportDocForBC('${pr.id}')">📄 Depuis un PDF</button>
+    <button class="btn gold sm" onclick="openImportDocGeneric('${pr.id}','bc')">📄 Depuis un PDF</button>
     <button class="btn primary sm" onclick="openBCModal('${pr.id}')">${icon('plus')} Nouveau bon de commande</button>
   </div></div>
     ${bcs.length===0 ? emptyState("projects","Aucun bon de commande","Créez le premier bon de commande de ce projet.") :
     `<div class="card">${renderBCTable(bcs, pr.id)}</div>`}`;
 }
 function renderBCTable(bcs, projectId){
-  return `<table><thead><tr><th>N°</th><th>Fournisseur</th><th>Émis le</th><th>Montant TTC</th><th>Statut</th><th></th></tr></thead><tbody>
-    ${bcs.map((b,i)=>`<tr>
-      <td class="mono">${b.numero||'—'}</td>
-      <td>${b.fournisseur}</td>
-      <td>${b.dateEmission||b.createdAt||'—'}</td>
-      <td>${fmt(b.montantTTC)} ${b.devise||'FCFA'}</td>
-      <td>
-        <select onchange="updateBCStatut('${projectId}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-          ${BC_STATUTS.map(s=>`<option ${s===b.statut?'selected':''}>${s}</option>`).join("")}
-        </select>
-      </td>
-      <td>${delBtn(`deleteArrayItem('${projectId}','bonsCommande',${i},'${esc(b.numero||b.fournisseur)}')`)}</td>
-    </tr>`).join("")}
-  </tbody></table>`;
+  return bcs.map((b,i)=>{
+    const arts = b.articles||[];
+    const cols = b.colonnes && b.colonnes.length ? b.colonnes : (arts[0]?Object.keys(arts[0]):[]);
+    return `<div style="padding:11px 0;border-bottom:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+        <div style="min-width:0;">
+          <strong class="mono" style="font-size:13px;">${b.numero||'BC'}</strong> — <strong>${b.fournisseur}</strong><br>
+          <span style="font-size:11.5px;color:var(--muted);">${b.dateEmission||b.createdAt||'—'} · ${fmt(b.montantTTC)} ${b.devise||'FCFA'}</span>
+          ${b.objet?`<div style="font-size:12px;margin-top:4px;">${esc(b.objet)}</div>`:''}
+          ${b.fileUrl?`<div style="margin-top:3px;"><a class="doc-link" href="${b.fileUrl}" download="${esc(b.fileName||b.numero)}" target="_blank">📎 ${b.fileName||'Document'}</a></div>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <select onchange="updateBCStatut('${projectId}',${i},this.value)" style="font-size:11px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+            ${BC_STATUTS.map(s=>`<option ${s===b.statut?'selected':''}>${s}</option>`).join("")}
+          </select>
+          <button class="btn sm icon" onclick="openEditAchatModal('${projectId}','bc',${i})" title="Modifier">✎</button>
+          ${delBtn(`deleteArrayItem('${projectId}','bonsCommande',${i},'${esc(b.numero||b.fournisseur)}')`)}
+        </div>
+      </div>
+      ${arts.length>0 ? `
+        <div onclick="toggleAchatDetails('bc${projectId}${i}')" style="font-size:11.5px;color:var(--gold);cursor:pointer;margin-top:6px;">▾ ${arts.length} article(s) — voir le détail</div>
+        <div id="det_bc${projectId}${i}" style="display:none;overflow-x:auto;margin-top:8px;">
+          <table style="min-width:400px;"><thead><tr>${cols.map(c=>`<th style="font-size:10px;">${esc(c)}</th>`).join("")}</tr></thead><tbody>
+            ${arts.map(a=>`<tr>${cols.map(c=>`<td style="font-size:11.5px;">${esc(a[c]||'')}</td>`).join("")}</tr>`).join("")}
+          </tbody></table>
+        </div>` : ''}
+    </div>`;
+  }).join("");
 }
+window.toggleAchatDetails = function(id){
+  const el = document.getElementById("det_"+id);
+  if(el) el.style.display = el.style.display==="none" ? "block" : "none";
+};
+// Réutilise l'écran de relecture générique pour éditer un enregistrement existant
+window.openEditAchatModal = function(projectId, targetType, index){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  const field = targetType==="bc" ? "bonsCommande" : targetType==="proforma" ? "proforma" : "factures";
+  const rec = pr[field][index];
+  window._genericExtract = {
+    docType: targetType==="bc"?"Bon de commande":targetType==="proforma"?"Pro forma":"Facture",
+    numero:rec.numero||"", date:rec.dateEmission||"", fournisseur:rec.fournisseur||"", client:rec.client||"",
+    objet:rec.objet||"", montantHT:String(rec.montantHT||""), tva:String(rec.tva||""),
+    montantTTC:String(rec.montantTTC||rec.montant||""), echeance:rec.echeance||rec.validite||"",
+    columns:(rec.colonnes||[]).map(l=>({label:l})), tableRows:rec.articles||[],
+    fileUrl:rec.fileUrl||null, fileName:rec.fileName||null
+  };
+  renderPdfReviewModal(projectId, targetType);
+  setTimeout(()=>{ if($("#rvStatut") && rec.statut) $("#rvStatut").value = rec.statut; }, 30);
+  window._editingIndex = index;
+};
 window.openBCModal = function(projectId){
   const fournisseurOptions = STATE.suppliers.map(s=>`<option>${esc(s.nom)}</option>`).join("");
   openModal(`
@@ -2158,7 +2378,7 @@ window.updateBCStatut = async function(projectId, i, val){
 function renderProforma(pr){
   const list = pr.proforma || [];
   return `<div class="section-title"><div></div><div style="display:flex;gap:8px;">
-    <button class="btn gold sm" onclick="openImportDocForProforma('${pr.id}')">📄 Depuis un PDF</button>
+    <button class="btn gold sm" onclick="openImportDocGeneric('${pr.id}','proforma')">📄 Depuis un PDF</button>
     <button class="btn primary sm" onclick="openProformaModal('${pr.id}')">${icon('plus')} Nouvelle pro forma</button>
   </div></div>
   ${list.length===0 ? emptyState("projects","Aucune pro forma","Enregistrez les factures pro forma reçues des fournisseurs.") :
@@ -2191,7 +2411,7 @@ window.submitProforma = async function(projectId){
 function renderFactures(pr){
   const list = pr.factures || [];
   return `<div class="section-title"><div></div><div style="display:flex;gap:8px;">
-    <button class="btn gold sm" onclick="openImportDocForFacture('${pr.id}')">📄 Depuis un PDF</button>
+    <button class="btn gold sm" onclick="openImportDocGeneric('${pr.id}','facture')">📄 Depuis un PDF</button>
     <button class="btn primary sm" onclick="openFactureModal('${pr.id}')">${icon('plus')} Nouvelle facture</button>
   </div></div>
   ${list.length===0 ? emptyState("projects","Aucune facture","Enregistrez les factures reçues des fournisseurs.") :
