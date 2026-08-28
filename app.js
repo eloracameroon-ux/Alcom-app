@@ -1,7 +1,7 @@
 // ============================================================
 // ALCOM PETROLEUM — Pilotage des projets stations-service
 // ============================================================
-export const BUILD_ID = "2026-08-25-02h50";
+export const BUILD_ID = "2026-08-25-04h15";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -837,10 +837,10 @@ function renderDocumentation(){
   const tous = [];
   STATE.projects.forEach(pr=>{
     (pr.documents||[]).forEach(d=> tous.push({...d, projet:pr.nom, projectId:pr.id}));
-    (pr.besoins||[]).forEach(b=>{ if(b.fileUrl) tous.push({nom:b.article, type:"Expression de besoin", statut:b.statut, date:b.date, fileUrl:b.fileUrl, fileName:b.fileName, projet:pr.nom, projectId:pr.id}); });
-    (pr.bonsCommande||[]).forEach(b=>{ if(b.fileUrl) tous.push({nom:b.numero||"Bon de commande", type:"Bon de commande", statut:b.statut, date:b.dateEmission, fileUrl:b.fileUrl, fileName:b.fileName, projet:pr.nom, projectId:pr.id}); });
-    (pr.factures||[]).forEach(f=>{ if(f.fileUrl) tous.push({nom:f.numero||"Facture", type:"Facture", statut:f.statut, date:f.echeance, fileUrl:f.fileUrl, fileName:f.fileName, projet:pr.nom, projectId:pr.id}); });
-    (pr.proforma||[]).forEach(p=>{ if(p.fileUrl) tous.push({nom:p.numero||"Pro forma", type:"Pro forma", statut:"", date:p.validite, fileUrl:p.fileUrl, fileName:p.fileName, projet:pr.nom, projectId:pr.id}); });
+    (pr.besoins||[]).forEach(b=>{ if(b.attachmentId||b.fileUrl) tous.push({nom:b.article, type:"Expression de besoin", statut:b.statut, date:b.date, attachmentId:b.attachmentId, fileUrl:b.fileUrl, fileName:b.fileName, projet:pr.nom, projectId:pr.id}); });
+    (pr.bonsCommande||[]).forEach(b=>{ if(b.attachmentId||b.fileUrl) tous.push({nom:b.numero||"Bon de commande", type:"Bon de commande", statut:b.statut, date:b.dateEmission, attachmentId:b.attachmentId, fileUrl:b.fileUrl, fileName:b.fileName, projet:pr.nom, projectId:pr.id}); });
+    (pr.factures||[]).forEach(f=>{ if(f.attachmentId||f.fileUrl) tous.push({nom:f.numero||"Facture", type:"Facture", statut:f.statut, date:f.echeance, attachmentId:f.attachmentId, fileUrl:f.fileUrl, fileName:f.fileName, projet:pr.nom, projectId:pr.id}); });
+    (pr.proforma||[]).forEach(p=>{ if(p.attachmentId||p.fileUrl) tous.push({nom:p.numero||"Pro forma", type:"Pro forma", statut:"", date:p.validite, attachmentId:p.attachmentId, fileUrl:p.fileUrl, fileName:p.fileName, projet:pr.nom, projectId:pr.id}); });
   });
   const categories = [...new Set(tous.map(d=>d.type))].sort();
   const filtres = tous.filter(d=> !filtre || d.type===filtre);
@@ -858,7 +858,7 @@ function renderDocumentation(){
       <div style="min-width:0;">
         <strong style="font-size:13.5px;">${d.nom}</strong><br>
         <span style="font-size:11.5px;color:var(--muted);">${d.projet} · ${d.date||'—'}${d.statut?` · ${d.statut}`:''}</span>
-        ${d.fileUrl?`<br><a class="doc-link" href="${d.fileUrl}" download="${esc(d.fileName||d.nom)}" target="_blank" onclick="event.stopPropagation()">📎 ${d.fileName||'Ouvrir'}</a>`:''}
+        ${(d.attachmentId||d.fileUrl)?`<br>${attachmentLinkHtml(d)}`:''}
       </div>
       <span class="pill info" style="flex-shrink:0;">${d.type}</span>
     </div>`).join("")}</div>`;
@@ -1614,12 +1614,15 @@ function renderDepenses(){
 
 function renderProjectDocuments(pr){
   const docs = pr.documents || [];
-  const photos = docs.filter(d=>d.type==="Photo" && d.fileUrl);
+  const photos = docs.filter(d=>d.type==="Photo" && (d.attachmentId||d.fileUrl));
   return `
-    <div class="section-title"><div></div><button class="btn primary sm" onclick="openAddDocModal('${pr.id}')">${icon('plus')} Ajouter un document</button></div>
+    <div class="section-title"><div></div><div style="display:flex;gap:8px;"><button class="btn sm ghost" onclick="optimizeProjectAttachments('${pr.id}')" title="Libère de l'espace en déplaçant les anciens fichiers embarqués">🗜️ Optimiser</button><button class="btn primary sm" onclick="openAddDocModal('${pr.id}')">${icon('plus')} Ajouter un document</button></div></div>
     ${photos.length>0 ? `<div class="card">
       <h3>Photos (${photos.length})</h3>
-      <div class="photo-strip">${photos.map(p=>`<a href="${p.fileUrl}" target="_blank"><img src="${p.fileUrl}" class="photo-thumb" alt="${esc(p.nom)}"></a>`).join("")}</div>
+      <div class="photo-strip">${photos.map(p=> p.attachmentId
+        ? `<a href="javascript:void(0)" onclick="openAttachment('${pr.id}','${p.attachmentId}','${esc(p.fileName||p.nom)}')"><img data-pid="${pr.id}" data-aid="${p.attachmentId}" class="photo-thumb" alt="${esc(p.nom)}"></a>`
+        : `<a href="${p.fileUrl}" target="_blank"><img src="${p.fileUrl}" class="photo-thumb" alt="${esc(p.nom)}"></a>`
+      ).join("")}</div>
     </div>` : ""}
     ${docs.length===0 ? emptyState("projects","Aucun document","Ajoutez les documents administratifs, techniques et financiers du projet.") :
     `<div class="card">${docs.map((d,i)=>{
@@ -1629,7 +1632,7 @@ function renderProjectDocuments(pr){
         <div style="min-width:0;">
           <strong style="font-size:13.5px;">${d.nom}</strong><br>
           <span style="font-size:11.5px;color:var(--muted)">${d.type} · ajouté le ${d.date}${d.importePar?` par ${d.importePar}`:''}${d.dateExpiration?` · expire le ${d.dateExpiration}`:''}</span>
-          ${d.fileUrl?`<br><a class="doc-link" href="${d.fileUrl}" download="${esc(d.fileName||d.nom)}" target="_blank" rel="noopener">📎 ${d.fileName||'Ouvrir le fichier'}</a>`:""}
+          ${(d.attachmentId||d.fileUrl)?`<br>${attachmentLinkHtml({...d, projectId:pr.id})}`:""}
         </div>
         <span class="pill ${expire?'bad':expBientot?'warn':d.statut==='Validé'?'ok':d.statut==='Expiré'?'bad':'warn'}" style="flex-shrink:0;">${expire?'Expiré':expBientot?'Expire bientôt':d.statut}</span>
         ${delBtn(`deleteArrayItem('${pr.id}','documents',${i},'${esc(d.nom)}')`)}
@@ -1655,8 +1658,7 @@ window.openAddDocModal = function(projectId){
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annuler</button><button class="btn primary" id="dSubmitBtn" onclick="submitAddDoc('${projectId}')">Ajouter</button></div>
   `);
 };
-// Convertit un fichier en base64 pour le stocker directement dans Firestore
-// (pas besoin de Firebase Storage / forfait Blaze — même principe que l'app du syndicat).
+// Convertit un fichier en base64 (encodage local, avant stockage)
 function fileToBase64(file){
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
@@ -1665,6 +1667,80 @@ function fileToBase64(file){
     reader.readAsDataURL(file);
   });
 }
+// -------------------------------------------------------------
+// PIÈCES JOINTES — stockées dans une SOUS-COLLECTION Firestore
+// (projects/{id}/attachments/{attachmentId}), pas dans le document
+// du projet lui-même. Un document Firestore est limité à 1 Mo ; en
+// accumulant les fichiers directement dans le projet, cette limite
+// finissait par être dépassée et bloquait tout enregistrement. Avec
+// une sous-collection, chaque fichier a son propre document de 1 Mo
+// max, donc plus de plafond global par projet.
+// Les enregistrements (documents, BC, factures…) ne gardent qu'une
+// référence légère : {attachmentId, fileName} au lieu du fichier
+// complet en base64.
+// -------------------------------------------------------------
+async function saveAttachment(projectId, file){
+  const fileUrl = await fileToBase64(file);
+  const ref = await addDoc(collection(db,"projects",projectId,"attachments"), {
+    fileUrl, fileName: file.name, createdAt: serverTimestamp()
+  });
+  return ref.id;
+}
+const attachmentCache = {}; // évite de re-télécharger la même pièce jointe plusieurs fois
+async function resolveAttachmentUrl(projectId, attachmentId){
+  const key = projectId+"/"+attachmentId;
+  if(attachmentCache[key]) return attachmentCache[key];
+  const snap = await getDoc(doc(db,"projects",projectId,"attachments",attachmentId));
+  if(!snap.exists()) throw new Error("Pièce jointe introuvable");
+  const url = snap.data().fileUrl;
+  attachmentCache[key] = url;
+  return url;
+}
+// Ouvre/télécharge une pièce jointe référencée par attachmentId (clic sur un lien 📎)
+window.openAttachment = async function(projectId, attachmentId, fileName){
+  try{
+    const url = await resolveAttachmentUrl(projectId, attachmentId);
+    const a = document.createElement("a");
+    a.href = url; a.download = fileName || "document"; a.target = "_blank";
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){ toast("Erreur d'ouverture : "+e.message, true); }
+};
+// Génère le HTML d'un lien de pièce jointe, quel que soit le format
+// (nouvelles références attachmentId, ou anciens fichiers encore
+// embarqués en base64 directement — rétrocompatibilité).
+function attachmentLinkHtml(rec){
+  if(rec.attachmentId) return `<a class="doc-link" href="javascript:void(0)" onclick="openAttachment('${rec.projectId||''}','${rec.attachmentId}','${esc(rec.fileName)}')">📎 ${rec.fileName||'Document'}</a>`;
+  if(rec.fileUrl) return `<a class="doc-link" href="${rec.fileUrl}" download="${esc(rec.fileName||'document')}" target="_blank">📎 ${rec.fileName||'Document'}</a>`;
+  return "";
+}
+// Migre les pièces jointes encore embarquées en base64 dans un projet
+// vers la sous-collection attachments, pour libérer de la place.
+window.optimizeProjectAttachments = async function(projectId){
+  const pr = STATE.projects.find(p=>p.id===projectId);
+  if(!pr) return;
+  toast("Optimisation en cours…");
+  let moved = 0;
+  const champs = ["documents","besoins","bonsCommande","proforma","factures"];
+  const updates = {};
+  for(const champ of champs){
+    const arr = JSON.parse(JSON.stringify(pr[champ]||[]));
+    for(const item of arr){
+      if(item.fileUrl && typeof item.fileUrl === "string" && item.fileUrl.startsWith("data:")){
+        const ref = await addDoc(collection(db,"projects",projectId,"attachments"), {
+          fileUrl: item.fileUrl, fileName: item.fileName||"document", createdAt: serverTimestamp()
+        });
+        item.attachmentId = ref.id;
+        delete item.fileUrl;
+        moved++;
+      }
+    }
+    updates[champ] = arr;
+  }
+  if(moved===0){ toast("Rien à optimiser — aucune pièce jointe embarquée trouvée"); return; }
+  await updateDoc(doc(db,"projects",projectId), updates);
+  toast(`${moved} pièce(s) jointe(s) optimisée(s) ✓ — projet allégé`);
+};
+
 window.submitAddDoc = async function(projectId){
   const pr = STATE.projects.find(p=>p.id===projectId);
   const nom = $("#dNom").value.trim();
@@ -1672,17 +1748,17 @@ window.submitAddDoc = async function(projectId){
   const btn = $("#dSubmitBtn"); btn.disabled = true; btn.textContent = "Ajout…";
   try{
     const file = $("#dFile").files[0];
-    let fileUrl = null, fileName = null;
+    let attachmentId = null, fileName = null;
     if(file){
-      if(file.size > 720000){
-        toast("Fichier trop volumineux (max ~700 Ko). Compresse-le ou réduis la qualité de la photo.", true);
+      if(file.size > 900000){
+        toast("Fichier trop volumineux (max ~900 Ko).", true);
         btn.disabled=false; btn.textContent="Ajouter"; return;
       }
-      btn.textContent = "Encodage du fichier…";
-      fileUrl = await fileToBase64(file);
+      btn.textContent = "Envoi du fichier…";
+      attachmentId = await saveAttachment(projectId, file);
       fileName = file.name;
     }
-    const docs = [...(pr.documents||[]), {nom, type:$("#dType").value, statut:$("#dStatut").value, date:$("#dDate").value||todayISO(), dateExpiration:$("#dExpiration").value, fileUrl, fileName, importePar:STATE.profile?STATE.profile.nom:"—"}];
+    const docs = [...(pr.documents||[]), {nom, type:$("#dType").value, statut:$("#dStatut").value, date:$("#dDate").value||todayISO(), dateExpiration:$("#dExpiration").value, attachmentId, fileName, importePar:STATE.profile?STATE.profile.nom:"—"}];
     await updateDoc(doc(db,"projects",projectId), {documents:docs});
     logActivity(projectId, "Documents", `Document ajouté — ${nom}`, "", $("#dType").value);
     closeModal(); toast("Document ajouté ✓");
@@ -1846,7 +1922,7 @@ function renderBesoins(pr){
       <div style="min-width:0;">
         <strong style="font-size:13.5px;">${b.article}</strong><br>
         <span style="font-size:11.5px;color:var(--muted)">Qté ${b.quantite} · Demandé par ${b.demandeur||'—'} le ${b.date}</span>
-        ${b.fileUrl?`<br><a class="doc-link" href="${b.fileUrl}" download="${esc(b.fileName||b.article)}" target="_blank">📎 ${b.fileName||'Document'}</a>`:""}
+        ${(b.attachmentId||b.fileUrl)?`<br>${attachmentLinkHtml({...b, fileName:b.fileName||b.article, projectId:pr.id})}`:""}
       </div>
       <div style="display:flex;gap:6px;align-items:flex-start;flex-shrink:0;">
         <select onchange="updateBesoinStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
@@ -1948,6 +2024,42 @@ const DOCTYPE_KEYWORDS = {
   "Reçu": ["reçu","recu","reçu de paiement"]
 };
 
+// Fusionne les lignes de "continuation" : quand une désignation s'étale sur
+// plusieurs lignes dans le PDF (texte qui retourne à la ligne), chaque bout
+// de texte arrive comme une ligne de tableau séparée, sans quantité ni prix.
+// On les recolle à la ligne suivante qui, elle, contient des valeurs
+// numériques (quantité/prix/montant) — c'est cette ligne qui correspond au
+// véritable article complet.
+function mergeWrappedRows(columns, rows){
+  if(!columns.length || rows.length===0) return rows;
+  const numericCols = columns.filter(c=>/qt[ée]|quantit|prix|p\.?u|montant|total/i.test(c.label)).map(c=>c.label);
+  if(numericCols.length===0) return rows;
+  const designCol = (columns.find(c=>/d[ée]sign|description|article|libell[ée]/i.test(c.label)) || columns[0]).label;
+  const merged = [];
+  let pendingText = "";
+  rows.forEach(r=>{
+    const hasNumeric = numericCols.some(c=> (r[c]||"").trim());
+    if(!hasNumeric){
+      const anyText = Object.values(r).filter(v=>v&&v.trim()).join(" ");
+      if(anyText) pendingText = (pendingText ? pendingText+" " : "") + anyText;
+    } else {
+      if(pendingText){
+        r[designCol] = (pendingText + " " + (r[designCol]||"")).trim();
+        pendingText = "";
+      }
+      merged.push(r);
+    }
+  });
+  if(pendingText){
+    if(merged.length){
+      const last = merged[merged.length-1];
+      last[designCol] = (last[designCol] + " " + pendingText).trim();
+    } else {
+      merged.push({[designCol]: pendingText});
+    }
+  }
+  return merged;
+}
 async function extractPdfStructured(file){
   if(typeof pdfjsLib === "undefined") throw new Error("Bibliothèque PDF non chargée — vérifie ta connexion.");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -2014,6 +2126,7 @@ async function extractPdfStructured(file){
       if(Object.values(rowObj).some(v=>v.trim())) tableRows.push(rowObj);
       if(tableRows.length >= 100) break;
     }
+    tableRows = mergeWrappedRows(columns, tableRows);
   }
 
   const numero = extractField(fullText, [/N°\s*:?\s*([A-Z0-9/.\-]{3,})/i, /(?:FACTURE|BON DE COMMANDE|DEVIS|PRO ?FORMA)\s*N°?\s*:?\s*([A-Z0-9/.\-]{3,})/i]);
@@ -2057,14 +2170,14 @@ window.extractBesoinPdf = async function(projectId){
   if(!file){ toast("Choisis un fichier", true); return; }
   resultHost.innerHTML = `<p style="font-size:12px;color:var(--muted);">Extraction en cours…</p>`;
   try{
-    let fileUrl = null, fileName = file.name;
-    if(file.size <= 720000){ fileUrl = await fileToBase64(file); }
+    let attachmentId = null, fileName = file.name;
+    if(file.size <= 900000){ attachmentId = await saveAttachment(projectId, file); }
     if(file.type !== "application/pdf"){
       resultHost.innerHTML = `<p style="font-size:12px;color:var(--muted);">Photo importée en pièce jointe (l'extraction automatique n'est disponible que pour les PDF texte). Ajoute le besoin manuellement, le fichier restera joint.</p>
         <div style="margin-top:10px;display:flex;gap:8px;">
           <input id="besoinPdfManualLine" placeholder="Article" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
           <input id="besoinPdfManualQty" type="number" value="1" style="width:70px;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
-          <button class="btn primary sm" onclick="submitBesoinFromPdfLines('${projectId}', [{designation:document.getElementById('besoinPdfManualLine').value, quantite:Number(document.getElementById('besoinPdfManualQty').value||1)}], '${fileUrl?fileUrl.replace(/'/g,"\\'"):''}', '${esc(fileName)}')">Ajouter</button>
+          <button class="btn primary sm" onclick="submitBesoinFromPdfLines('${projectId}', [{designation:document.getElementById('besoinPdfManualLine').value, quantite:Number(document.getElementById('besoinPdfManualQty').value||1)}], '${attachmentId||''}', '${esc(fileName)}')">Ajouter</button>
         </div>`;
       return;
     }
@@ -2076,7 +2189,7 @@ window.extractBesoinPdf = async function(projectId){
     }
     const parsed = uniq.map(parseDesignationQty);
     window._besoinPdfLines = parsed;
-    window._besoinPdfFile = {fileUrl, fileName};
+    window._besoinPdfFile = {attachmentId, fileName};
     resultHost.innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">${parsed.length} ligne(s) détectée(s) — corrige désignation/quantité, décoche ou supprime ce qui n'est pas pertinent :</p>
       <div id="besoinPdfLinesWrap" style="max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:8px;">
@@ -2101,9 +2214,9 @@ window.confirmBesoinLinesImport = async function(projectId){
     quantite: Number(r.querySelector(".besoinLineQty").value||1)
   })).filter(l=>l.designation);
   if(lignes.length===0){ toast("Aucune ligne sélectionnée", true); return; }
-  await submitBesoinFromPdfLines(projectId, lignes, window._besoinPdfFile.fileUrl, window._besoinPdfFile.fileName);
+  await submitBesoinFromPdfLines(projectId, lignes, window._besoinPdfFile.attachmentId, window._besoinPdfFile.fileName);
 };
-window.submitBesoinFromPdfLines = async function(projectId, lignes, fileUrl, fileName){
+window.submitBesoinFromPdfLines = async function(projectId, lignes, attachmentId, fileName){
   lignes = lignes.filter(l=>l.designation);
   if(lignes.length===0){ toast("Aucun article", true); return; }
   const pr = STATE.projects.find(p=>p.id===projectId);
@@ -2111,7 +2224,7 @@ window.submitBesoinFromPdfLines = async function(projectId, lignes, fileUrl, fil
   const dateVal = $("#besoinPdfDate") ? $("#besoinPdfDate").value : todayISO();
   const nouveaux = lignes.map((l,i)=>({
     article:l.designation, quantite:l.quantite||1, demandeur, date:dateVal||todayISO(), statut:"Identifié",
-    fileUrl: i===0 ? fileUrl : null, fileName: i===0 ? fileName : null
+    attachmentId: i===0 ? (attachmentId||null) : null, fileName: i===0 ? fileName : null
   }));
   const besoins = [...(pr.besoins||[]), ...nouveaux];
   await updateDoc(doc(db,"projects",projectId), {besoins});
@@ -2131,10 +2244,10 @@ window.openImportDocGeneric = async function(projectId, targetType){
   if(!file) return;
   toast("Analyse du document en cours…");
   try{
-    let fileUrl = null;
-    if(file.size <= 720000) fileUrl = await fileToBase64(file);
+    let attachmentId = null;
+    if(file.size <= 900000) attachmentId = await saveAttachment(projectId, file);
     const ex = await extractPdfStructured(file);
-    window._genericExtract = {...ex, fileUrl, fileName: file.name};
+    window._genericExtract = {...ex, attachmentId, fileName: file.name};
     window._editingIndex = null;
     renderPdfReviewModal(projectId, targetType);
   }catch(e){ toast("Erreur d'extraction : "+e.message, true); }
@@ -2207,7 +2320,7 @@ window.submitGenericPdfImport = async function(projectId, targetType){
     montantTTC: Number(($("#rvTTC").value||"0").replace(/\D/g,""))||0,
     statut: $("#rvStatut").value,
     colonnes: cols, articles: rows,
-    fileUrl: ex.fileUrl||null, fileName: ex.fileName||null
+    attachmentId: ex.attachmentId||null, fileUrl: ex.attachmentId?null:(ex.fileUrl||null), fileName: ex.fileName||null
   };
   if(!record.fournisseur){ toast("Le fournisseur est requis", true); return; }
   const pr = STATE.projects.find(p=>p.id===projectId);
@@ -2219,7 +2332,7 @@ window.submitGenericPdfImport = async function(projectId, targetType){
       montantHT:record.montantHT, montantTTC:record.montantTTC, devise:"FCFA",
       dateEmission:record.dateEmission, datePrevue:"", delaiLivraison:"",
       statut:record.statut, articles:record.articles, colonnes:record.colonnes,
-      fileUrl:record.fileUrl, fileName:record.fileName, createdAt:isEdit?(pr.bonsCommande[editIdx].createdAt||todayISO()):todayISO()
+      attachmentId:record.attachmentId, fileUrl:record.fileUrl, fileName:record.fileName, createdAt:isEdit?(pr.bonsCommande[editIdx].createdAt||todayISO()):todayISO()
     };
     let bonsCommande, montantEngage = Number(pr.montantEngage)||0;
     if(isEdit){
@@ -2236,7 +2349,7 @@ window.submitGenericPdfImport = async function(projectId, targetType){
     const pf = {
       numero:record.numero, fournisseur:record.fournisseur, client:record.client, objet:record.objet,
       montant:record.montantTTC, devise:"FCFA", validite:record.echeance,
-      articles:record.articles, colonnes:record.colonnes, fileUrl:record.fileUrl, fileName:record.fileName
+      articles:record.articles, colonnes:record.colonnes, attachmentId:record.attachmentId, fileUrl:record.fileUrl, fileName:record.fileName
     };
     let proforma;
     if(isEdit){ proforma = JSON.parse(JSON.stringify(pr.proforma)); proforma[editIdx] = pf; }
@@ -2247,7 +2360,7 @@ window.submitGenericPdfImport = async function(projectId, targetType){
       numero:record.numero, fournisseur:record.fournisseur, client:record.client, objet:record.objet,
       montant:record.montantTTC, montantHT:record.montantHT, tva:record.tva, devise:"FCFA",
       echeance:record.echeance, statut:isEdit?(pr.factures[editIdx].statut||"À payer"):"À payer",
-      articles:record.articles, colonnes:record.colonnes, fileUrl:record.fileUrl, fileName:record.fileName
+      articles:record.articles, colonnes:record.colonnes, attachmentId:record.attachmentId, fileUrl:record.fileUrl, fileName:record.fileName
     };
     let factures;
     if(isEdit){ factures = JSON.parse(JSON.stringify(pr.factures)); factures[editIdx] = fc; }
@@ -2288,7 +2401,7 @@ function renderBCTable(bcs, projectId){
           <strong class="mono" style="font-size:13px;">${b.numero||'BC'}</strong> — <strong>${b.fournisseur}</strong><br>
           <span style="font-size:11.5px;color:var(--muted);">${b.dateEmission||b.createdAt||'—'} · ${fmt(b.montantTTC)} ${b.devise||'FCFA'}</span>
           ${b.objet?`<div style="font-size:12px;margin-top:4px;">${esc(b.objet)}</div>`:''}
-          ${b.fileUrl?`<div style="margin-top:3px;"><a class="doc-link" href="${b.fileUrl}" download="${esc(b.fileName||b.numero)}" target="_blank">📎 ${b.fileName||'Document'}</a></div>`:''}
+          ${(b.attachmentId||b.fileUrl)?`<div style="margin-top:3px;">${attachmentLinkHtml({...b, fileName:b.fileName||b.numero, projectId})}</div>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
           <select onchange="updateBCStatut('${projectId}',${i},this.value)" style="font-size:11px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
@@ -2323,7 +2436,7 @@ window.openEditAchatModal = function(projectId, targetType, index){
     objet:rec.objet||rec.articlesTexte||(typeof rec.articles==='string'?rec.articles:"")||"", montantHT:String(rec.montantHT||""), tva:String(rec.tva||""),
     montantTTC:String(rec.montantTTC||rec.montant||""), echeance:rec.echeance||rec.validite||"",
     columns:(rec.colonnes||[]).map(l=>({label:l})), tableRows:Array.isArray(rec.articles)?rec.articles:[],
-    fileUrl:rec.fileUrl||null, fileName:rec.fileName||null
+    attachmentId:rec.attachmentId||null, fileUrl:rec.fileUrl||null, fileName:rec.fileName||null
   };
   renderPdfReviewModal(projectId, targetType);
   setTimeout(()=>{ if($("#rvStatut") && rec.statut) $("#rvStatut").value = rec.statut; }, 30);
@@ -2383,9 +2496,31 @@ function renderProforma(pr){
     <button class="btn primary sm" onclick="openProformaModal('${pr.id}')">${icon('plus')} Nouvelle pro forma</button>
   </div></div>
   ${list.length===0 ? emptyState("projects","Aucune pro forma","Enregistrez les factures pro forma reçues des fournisseurs.") :
-  `<div class="card"><table><thead><tr><th>N°</th><th>Fournisseur</th><th>Montant</th><th>Validité</th><th></th></tr></thead><tbody>
-    ${list.map((p,i)=>`<tr><td class="mono">${p.numero||'—'}</td><td>${p.fournisseur}</td><td>${fmt(p.montant)} ${p.devise||'FCFA'}</td><td>${p.validite||'—'}</td><td>${delBtn(`deleteArrayItem('${pr.id}','proforma',${i},'${esc(p.numero||p.fournisseur)}')`)}</td></tr>`).join("")}
-  </tbody></table></div>`}`;
+  `<div class="card">${list.map((p,i)=>{
+    const arts = Array.isArray(p.articles) ? p.articles : [];
+    const cols = p.colonnes && p.colonnes.length ? p.colonnes : (arts[0]?Object.keys(arts[0]):[]);
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+        <div style="min-width:0;">
+          <strong class="mono" style="font-size:13px;">${p.numero||'—'}</strong> — <strong>${p.fournisseur}</strong>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${fmt(p.montant)} ${p.devise||'FCFA'} · validité ${p.validite||'—'}</div>
+          ${p.objet?`<div style="font-size:12px;margin-top:4px;">${esc(p.objet)}</div>`:''}
+          ${(p.attachmentId||p.fileUrl)?`<div style="margin-top:3px;">${attachmentLinkHtml({...p, fileName:p.fileName||p.numero, projectId:pr.id})}</div>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="btn sm icon" onclick="openEditAchatModal('${pr.id}','proforma',${i})" title="Modifier">✎</button>
+          ${delBtn(`deleteArrayItem('${pr.id}','proforma',${i},'${esc(p.numero||p.fournisseur)}')`)}
+        </div>
+      </div>
+      ${arts.length>0 ? `
+        <div onclick="toggleAchatDetails('pf${pr.id}${i}')" style="font-size:11.5px;color:var(--gold);cursor:pointer;margin-top:6px;">▾ ${arts.length} article(s) — voir le détail</div>
+        <div id="det_pf${pr.id}${i}" style="display:none;overflow-x:auto;margin-top:8px;">
+          <table style="min-width:400px;"><thead><tr>${cols.map(c=>`<th style="font-size:10px;">${esc(c)}</th>`).join("")}</tr></thead><tbody>
+            ${arts.map(a=>`<tr>${cols.map(c=>`<td style="font-size:11.5px;">${esc(a[c]||'')}</td>`).join("")}</tr>`).join("")}
+          </tbody></table>
+        </div>` : ''}
+    </div>`;
+  }).join("")}</div>`}`;
 }
 window.openProformaModal = function(projectId){
   const fournisseurOptions = STATE.suppliers.map(s=>`<option>${esc(s.nom)}</option>`).join("");
@@ -2416,19 +2551,34 @@ function renderFactures(pr){
     <button class="btn primary sm" onclick="openFactureModal('${pr.id}')">${icon('plus')} Nouvelle facture</button>
   </div></div>
   ${list.length===0 ? emptyState("projects","Aucune facture","Enregistrez les factures reçues des fournisseurs.") :
-  `<div class="card">${list.map((f,i)=>`
-    <div style="padding:9px 0;border-bottom:1px solid var(--line);">
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-        <strong style="font-size:13.5px;">${f.numero||'Facture'} — ${f.fournisseur}</strong>
-        <div style="display:flex;gap:6px;">
-          <select onchange="updateFactureStatut('${pr.id}',${i},this.value)" style="font-size:11.5px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
+  `<div class="card">${list.map((f,i)=>{
+    const arts = Array.isArray(f.articles) ? f.articles : [];
+    const cols = f.colonnes && f.colonnes.length ? f.colonnes : (arts[0]?Object.keys(arts[0]):[]);
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+        <div style="min-width:0;">
+          <strong style="font-size:13.5px;">${f.numero||'Facture'} — ${f.fournisseur}</strong>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${fmt(f.montant)} ${f.devise||'FCFA'} · échéance ${f.echeance||'—'}</div>
+          ${f.objet?`<div style="font-size:12px;margin-top:4px;">${esc(f.objet)}</div>`:''}
+          ${(f.attachmentId||f.fileUrl)?`<div style="margin-top:3px;">${attachmentLinkHtml({...f, fileName:f.fileName||f.numero, projectId:pr.id})}</div>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <select onchange="updateFactureStatut('${pr.id}',${i},this.value)" style="font-size:11px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--paper-3);color:var(--text);">
             ${["À payer","Payée partiellement","Payée"].map(s=>`<option ${s===f.statut?'selected':''}>${s}</option>`).join("")}
           </select>
+          <button class="btn sm icon" onclick="openEditAchatModal('${pr.id}','facture',${i})" title="Modifier">✎</button>
           ${delBtn(`deleteArrayItem('${pr.id}','factures',${i},'${esc(f.numero||f.fournisseur)}')`)}
         </div>
       </div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${fmt(f.montant)} ${f.devise||'FCFA'} · échéance ${f.echeance||'—'}</div>
-    </div>`).join("")}</div>`}`;
+      ${arts.length>0 ? `
+        <div onclick="toggleAchatDetails('fc${pr.id}${i}')" style="font-size:11.5px;color:var(--gold);cursor:pointer;margin-top:6px;">▾ ${arts.length} article(s) — voir le détail</div>
+        <div id="det_fc${pr.id}${i}" style="display:none;overflow-x:auto;margin-top:8px;">
+          <table style="min-width:400px;"><thead><tr>${cols.map(c=>`<th style="font-size:10px;">${esc(c)}</th>`).join("")}</tr></thead><tbody>
+            ${arts.map(a=>`<tr>${cols.map(c=>`<td style="font-size:11.5px;">${esc(a[c]||'')}</td>`).join("")}</tr>`).join("")}
+          </tbody></table>
+        </div>` : ''}
+    </div>`;
+  }).join("")}</div>`}`;
 }
 window.openFactureModal = function(projectId){
   const fournisseurOptions = STATE.suppliers.map(s=>`<option>${esc(s.nom)}</option>`).join("");
@@ -2963,12 +3113,12 @@ async function downloadPdf(title, subtitle, bodyHtml, filename){
 window.printProjectReport = async function(projectId){
   const pr = STATE.projects.find(p=>p.id===projectId);
   if(!pr) return;
-  await downloadPdf(`Rapport de projet — ${pr.nom}`, `Code projet : ${pr.code||'—'}`, buildProjectReportBody(pr), `Rapport_${pr.nom.replace(/\s+/g,'_')}.pdf`);
+  await downloadPdf(`Rapport de projet — ${pr.nom}`, `Code projet : ${pr.code||'—'}`, await buildProjectReportBody(pr), `Rapport_${pr.nom.replace(/\s+/g,'_')}.pdf`);
 };
 
 // Construit le contenu HTML du rapport d'un seul projet — réutilisé pour un rapport
 // individuel ou intégré dans un rapport groupé couvrant plusieurs/tous les projets.
-function buildProjectReportBody(pr, isGrouped){
+async function buildProjectReportBody(pr, isGrouped){
   const idx = PROJECT_STATUTS.indexOf(pr.statut);
   const avance = Math.round(((idx+1)/PROJECT_STATUTS.length)*100);
   const phaseChecklists = pr.phaseChecklists || freshPhaseChecklists();
@@ -3015,9 +3165,13 @@ function buildProjectReportBody(pr, isGrouped){
   const docsManquantsHtml = docsManquants.length===0 ? `<p style="font-size:12px;color:#2E7D32;">Aucun document manquant.</p>` :
     `<p style="font-size:12px;color:#B01813;">${docsManquants.join(", ")}</p>`;
 
-  const photos = docs.filter(d=>d.type==="Photo" && d.fileUrl);
+  const photos = docs.filter(d=>d.type==="Photo" && (d.attachmentId||d.fileUrl));
+  const photoUrls = await Promise.all(photos.map(async p=>{
+    if(p.attachmentId){ try{ return await resolveAttachmentUrl(pr.id, p.attachmentId); }catch(e){ return null; } }
+    return p.fileUrl;
+  }));
   const photosHtml = photos.length===0 ? "" : `<div class="report-section"><h4>Photos (${photos.length})</h4>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">${photos.map(p=>`<img src="${p.fileUrl}" style="width:110px;height:110px;object-fit:cover;border-radius:6px;border:1px solid #ddd;">`).join("")}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">${photoUrls.filter(Boolean).map(u=>`<img src="${u}" style="width:110px;height:110px;object-fit:cover;border-radius:6px;border:1px solid #ddd;">`).join("")}</div>
   </div>`;
 
   const alertsProjet = computeAlerts().filter(a=>a.text.startsWith(pr.nom));
@@ -3064,7 +3218,8 @@ function buildProjectReportBody(pr, isGrouped){
 window.printMultiProjectReport = async function(projectIds){
   const list = projectIds && projectIds.length ? STATE.projects.filter(p=>projectIds.includes(p.id)) : STATE.projects;
   if(list.length===0){ toast("Aucun projet sélectionné", true); return; }
-  const bodyHtml = list.map((pr,i)=>`<div style="${i>0?'page-break-before:always;':''}">${buildProjectReportBody(pr, i===0?'first':'next')}</div>`).join("");
+  const bodies = await Promise.all(list.map(pr=>buildProjectReportBody(pr)));
+  const bodyHtml = list.map((pr,i)=>`<div style="${i>0?'page-break-before:always;':''}">${bodies[i]}</div>`).join("");
   await downloadPdf(
     list.length===1 ? `Rapport de projet — ${list[0].nom}` : `Rapport consolidé — ${list.length} projets`,
     list.length===1 ? `Code projet : ${list[0].code||'—'}` : list.map(p=>p.nom).join(", "),
@@ -3190,7 +3345,15 @@ window.submitEditUser = async function(userId){
 // -------------------------------------------------------------
 // EVENTS communs après chaque render
 // -------------------------------------------------------------
-function bindContentEvents(){}
+function bindContentEvents(){
+  // Charge les miniatures des photos référencées par attachmentId (sous-collection)
+  $$('img.photo-thumb[data-aid]').forEach(async img=>{
+    const pid = img.dataset.pid, aid = img.dataset.aid;
+    if(!aid || img.dataset.loaded) return;
+    img.dataset.loaded = "1";
+    try{ img.src = await resolveAttachmentUrl(pid, aid); }catch(e){ /* pièce jointe indisponible */ }
+  });
+}
 
 // -------------------------------------------------------------
 // AUTH

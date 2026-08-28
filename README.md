@@ -66,7 +66,12 @@ Une fois déployée, ouvre le lien sur mobile → menu du navigateur → **Ajout
 Dans l'onglet **Rapports**, clique sur **Générer le rapport** d'un projet → la boîte de dialogue d'impression Safari s'ouvre → choisis **Enregistrer au format PDF**.
 
 ## 6. Nouvelle collection Firestore
-Le journal d'historique et l'annuaire des contacts utilisent deux nouvelles collections (`activityLogs`, `contacts`), couvertes par les mêmes règles Firestore que ci-dessus (aucune action supplémentaire nécessaire).
+Le journal d'historique et l'annuaire des contacts utilisent deux nouvelles collections (`activityLogs`, `contacts`), couvertes par les mêmes règles Firestore que ci-dessus (aucune action supplémentaire nécessaire — les règles s'appliquent à toutes les collections et sous-collections).
+
+## 6bis. Pièces jointes en sous-collection (limite des 1 Mo résolue)
+Chaque fichier joint (document, besoin, BC, facture, pro forma) est maintenant stocké dans une **sous-collection** `projects/{projetId}/attachments/{id}` plutôt que directement dans le document du projet. Un document Firestore est limité à 1 Mo — en accumulant les fichiers directement dans le projet, cette limite finissait par être dépassée (message d'erreur "exceeds the maximum allowed size") et bloquait tout enregistrement, même sans rapport avec le fichier qu'on venait d'ajouter. Avec une sous-collection, chaque fichier a son propre espace de 1 Mo, donc plus de plafond global.
+
+**Si un projet affiche encore cette erreur** : ouvre l'onglet **Documents** de ce projet → bouton **"🗜️ Optimiser"** en haut → ça déplace automatiquement les anciens fichiers encore embarqués vers le nouveau système, sans rien perdre.
 
 ## 7. Permissions par module
 Depuis **Paramètres → Utilisateurs**, tu peux maintenant choisir précisément quels modules chaque utilisateur voit (bouton ✎ à côté de son nom). **Administrateur, Direction et DAF ont toujours accès à tout**, sans configuration possible — ce sont les seuls comptes "pleins pouvoirs".
